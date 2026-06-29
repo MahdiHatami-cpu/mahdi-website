@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Minecraft Chatbot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --dirt:    #866043;
+      --grass:   #5d9c34;
+      --stone:   #7d7d7d;
+      --dark:    #1a1a1a;
+      --darker:  #0f0f0f;
+      --panel:   #222222;
+      --border:  #444444;
+      --gold:    #ffaa00;
+      --green:   #55ff55;
+      --red:     #ff5555;
+      --white:   #f0f0f0;
+      --muted:   #aaaaaa;
+      --chat-bg: #1c1c1c;
+    }
+
+    body {
+      font-family: "VT323", monospace;
+      background: var(--darker);
+      color: var(--white);
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--dark);
+      border-bottom: 3px solid var(--grass);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+    .mc-logo {
+      width: 42px; height: 42px;
+      image-rendering: pixelated;
+      background: linear-gradient(135deg, #5d9c34 0%, #866043 50%, #7d7d7d 100%);
+      border: 3px solid #000;
+      display: grid; place-items: center;
+      font-size: 22px;
+      box-shadow: inset -3px -3px 0 rgba(0,0,0,0.4), inset 3px 3px 0 rgba(255,255,255,0.15);
+    }
+    .header-info h1 {
+      font-family: "Press Start 2P", monospace;
+      font-size: .75rem;
+      color: var(--gold);
+      text-shadow: 2px 2px 0 #000;
+      line-height: 1.6;
+    }
+    .header-info p { font-size: 1rem; color: var(--muted); }
+    .status-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      margin-right: 6px; display: inline-block;
+      animation: blink-dot 2s infinite;
+    }
+    @keyframes blink-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* ── Categories bar ── */
+    .cats {
+      display: flex; gap: 6px; flex-wrap: wrap;
+      padding: 10px 16px;
+      background: var(--dark);
+      border-bottom: 2px solid #333;
+      flex-shrink: 0;
+    }
+    .cat-btn {
+      font-family: "VT323", monospace;
+      font-size: 1rem;
+      padding: 4px 12px;
+      border: 2px solid #555;
+      background: var(--panel);
+      color: var(--muted);
+      cursor: pointer;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .cat-btn:hover, .cat-btn.active {
+      background: #333; color: var(--gold); border-color: var(--gold);
+    }
+
+    /* ── Chat area ── */
+    #chat {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background: var(--chat-bg);
+    }
+    #chat::-webkit-scrollbar { width: 6px; }
+    #chat::-webkit-scrollbar-track { background: var(--darker); }
+    #chat::-webkit-scrollbar-thumb { background: #444; }
+
+    .msg {
+      display: flex;
+      gap: 10px;
+      max-width: 82%;
+      animation: pop-in .2s ease;
+    }
+    @keyframes pop-in { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+    .msg.user { align-self: flex-end; flex-direction: row-reverse; }
+    .msg.bot  { align-self: flex-start; }
+
+    .msg-avatar {
+      width: 36px; height: 36px; flex-shrink: 0;
+      border: 2px solid #555;
+      display: grid; place-items: center;
+      font-size: 20px;
+      background: var(--panel);
+      box-shadow: inset -2px -2px 0 rgba(0,0,0,0.5);
+      image-rendering: pixelated;
+    }
+    .msg.user .msg-avatar { background: #2a3a8a; border-color: #4466cc; }
+    .msg.bot  .msg-avatar { background: #2a5c1a; border-color: var(--grass); }
+
+    .msg-bubble {
+      padding: 10px 14px;
+      font-size: 1.2rem;
+      line-height: 1.5;
+      border: 2px solid;
+    }
+    .msg.user .msg-bubble {
+      background: #1e2d6e;
+      border-color: #4466cc;
+      color: #ccdeff;
+    }
+    .msg.bot .msg-bubble {
+      background: #1a2e10;
+      border-color: var(--grass);
+      color: #ccffcc;
+    }
+    .msg-meta {
+      font-size: .85rem; color: #555;
+      margin-top: 4px;
+    }
+    .msg.user .msg-meta { text-align: right; }
+
+    .category-tag {
+      display: inline-block;
+      font-size: .85rem;
+      padding: 1px 8px;
+      background: rgba(255,170,0,.15);
+      border: 1px solid rgba(255,170,0,.3);
+      color: var(--gold);
+      margin-top: 6px;
+    }
+
+    /* ── Suggestions ── */
+    .suggestions {
+      padding: 8px 16px;
+      display: flex; gap: 6px; flex-wrap: wrap;
+      border-top: 1px solid #2a2a2a;
+      flex-shrink: 0;
+      background: var(--dark);
+    }
+    .sugg-btn {
+      font-family: "VT323", monospace; font-size: 1rem;
+      padding: 4px 12px;
+      background: var(--panel); border: 2px solid #444;
+      color: var(--muted); cursor: pointer;
+      transition: border-color .15s, color .15s;
+    }
+    .sugg-btn:hover { border-color: var(--grass); color: var(--green); }
+
+    /* ── Input ── */
+    .input-bar {
+      display: flex;
+      gap: 0;
+      padding: 12px 16px;
+      background: var(--dark);
+      border-top: 3px solid var(--grass);
+      flex-shrink: 0;
+    }
+    #user-input {
+      flex: 1;
+      font-family: "VT323", monospace; font-size: 1.3rem;
+      padding: 10px 14px;
+      background: #111; color: var(--white);
+      border: 2px solid #555; border-right: none;
+      outline: none;
+    }
+    #user-input:focus { border-color: var(--grass); }
+    #user-input::placeholder { color: #555; }
+    #send-btn {
+      font-family: "Press Start 2P", monospace; font-size: .6rem;
+      padding: 10px 18px;
+      background: var(--grass); color: #000;
+      border: 2px solid #3a7020; border-left: none;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    #send-btn:hover { background: #74c43f; }
+    #send-btn:active { background: #4a8020; }
+
+    /* ── Typing indicator ── */
+    .typing {
+      display: flex; align-items: center; gap: 4px;
+      padding: 10px 14px;
+      background: #1a2e10; border: 2px solid var(--grass);
+      width: fit-content;
+    }
+    .typing span {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--grass);
+      animation: typing-dot 1.2s infinite;
+    }
+    .typing span:nth-child(2) { animation-delay: .2s; }
+    .typing span:nth-child(3) { animation-delay: .4s; }
+    @keyframes typing-dot { 0%,100%{opacity:.2;transform:scale(1)} 50%{opacity:1;transform:scale(1.3)} }
+
+    /* ── Loading screen ── */
+    #loading {
+      position: fixed; inset: 0;
+      background: var(--darker);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 20px;
+      z-index: 99;
+    }
+    #loading h2 {
+      font-family: "Press Start 2P", monospace;
+      font-size: 1rem; color: var(--gold);
+      text-shadow: 3px 3px 0 #000;
+      text-align: center; line-height: 2;
+    }
+    .loading-bar-wrap {
+      width: 300px; height: 24px;
+      border: 3px solid #555;
+      background: #111;
+    }
+    .loading-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--grass), var(--gold));
+      width: 0%;
+      transition: width .1s;
+    }
+    #loading p { font-size: 1.1rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+
+<!-- Loading screen -->
+<div id="loading">
+  <div class="mc-logo">⛏️</div>
+  <h2>MINECRAFT<br>CHATBOT</h2>
+  <div class="loading-bar-wrap"><div class="loading-bar" id="load-bar"></div></div>
+  <p id="load-text">Loading Q&A database...</p>
+</div>
+
+<!-- Header -->
+<header>
+  <div class="mc-logo">🎮</div>
+  <div class="header-info">
+    <h1>MINECRAFT EXPERT</h1>
+    <p><span class="status-dot"></span>Online — 14,462 Q&A pairs loaded</p>
+  </div>
+</header>
+
+<!-- Category filter -->
+<div class="cats">
+  <button class="cat-btn active" data-cat="all">All</button>
+  <button class="cat-btn" data-cat="block_property">Blocks</button>
+  <button class="cat-btn" data-cat="item_info">Items</button>
+  <button class="cat-btn" data-cat="mob_info">Mobs</button>
+  <button class="cat-btn" data-cat="crafting">Crafting</button>
+  <button class="cat-btn" data-cat="biome_info">Biomes</button>
+  <button class="cat-btn" data-cat="enchantment_info">Enchantments</button>
+  <button class="cat-btn" data-cat="food_info">Food</button>
+  <button class="cat-btn" data-cat="effect_info">Effects</button>
+</div>
+
+<!-- Chat -->
+<div id="chat">
+  <div class="msg bot">
+    <div class="msg-avatar">🤖</div>
+    <div>
+      <div class="msg-bubble">
+        Hey! I'm the Minecraft Expert Bot.<br>
+        Ask me anything about blocks, items, mobs, crafting, biomes, enchantments, food or effects!
+      </div>
+      <div class="msg-meta">Bot • now</div>
+    </div>
+  </div>
+</div>
+
+<!-- Suggestions -->
+<div class="suggestions" id="suggestions">
+  <button class="sugg-btn">What is the hardness of Diamond Ore?</button>
+  <button class="sugg-btn">How do I craft a Crafting Table?</button>
+  <button class="sugg-btn">Is Creeper hostile?</button>
+  <button class="sugg-btn">Max level of Sharpness?</button>
+  <button class="sugg-btn">Temperature of Desert biome?</button>
+</div>
+
+<!-- Input -->
+<div class="input-bar">
+  <input id="user-input" type="text" placeholder="Type your question here..." autocomplete="off">
+  <button id="send-btn">SEND ▶</button>
+</div>
+
+<script>
+  let QA = [];
+  let activeCategory = 'all';
+
+  /* ── Load Q&A JSON ── */
+  async function loadData() {
+    const bar  = document.getElementById('load-bar');
+    const text = document.getElementById('load-text');
+    try {
+      bar.style.width = '30%';
+      text.textContent = 'Fetching database...';
+      const res = await fetch('./qa_data.json');
+      bar.style.width = '60%';
+      text.textContent = 'Parsing data...';
+      QA = await res.json();
+      bar.style.width = '100%';
+      text.textContent = `Loaded ${QA.length.toLocaleString()} pairs!`;
+      await new Promise(r => setTimeout(r, 600));
+      document.getElementById('loading').style.display = 'none';
+    } catch(e) {
+      text.textContent = 'Error loading qa_data.json!';
+      bar.style.background = '#ff5555';
+    }
+  }
+
+  /* ── Simple TF-IDF style matching ── */
+  function tokenize(str) {
+    return str.toLowerCase().replace(/[^a-z0-9\s]/g,'').split(/\s+/).filter(Boolean);
+  }
+
+  function score(query, candidate) {
+    const qt = new Set(tokenize(query));
+    const ct = new Set(tokenize(candidate));
+    let hits = 0;
+    qt.forEach(t => { if (ct.has(t)) hits++; });
+    return hits / (Math.sqrt(qt.size) * Math.sqrt(ct.size) || 1);
+  }
+
+  function getAnswer(query) {
+    const pool = activeCategory === 'all' ? QA : QA.filter(r => r.category === activeCategory);
+    let best = null, bestScore = -1;
+    for (const row of pool) {
+      const s = score(query, row.question);
+      if (s > bestScore) { bestScore = s; best = row; }
+    }
+    return best;
+  }
+
+  /* ── Render message ── */
+  function addMsg(text, role, category) {
+    const chat = document.getElementById('chat');
+    const wrap = document.createElement('div');
+    wrap.className = `msg ${role}`;
+    const avatar = document.createElement('div');
+    avatar.className = 'msg-avatar';
+    avatar.textContent = role === 'user' ? '👤' : '🤖';
+    const body = document.createElement('div');
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    bubble.textContent = text;
+    if (category && role === 'bot') {
+      const tag = document.createElement('div');
+      tag.className = 'category-tag';
+      tag.textContent = '📂 ' + category.replace('_', ' ');
+      bubble.appendChild(tag);
+    }
+    const meta = document.createElement('div');
+    meta.className = 'msg-meta';
+    meta.textContent = (role === 'user' ? 'You' : 'Bot') + ' • now';
+    body.appendChild(bubble);
+    body.appendChild(meta);
+    wrap.appendChild(avatar);
+    wrap.appendChild(body);
+    chat.appendChild(wrap);
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  function addTyping() {
+    const chat = document.getElementById('chat');
+    const wrap = document.createElement('div');
+    wrap.className = 'msg bot'; wrap.id = 'typing-wrap';
+    const avatar = document.createElement('div');
+    avatar.className = 'msg-avatar'; avatar.textContent = '🤖';
+    const typing = document.createElement('div');
+    typing.className = 'typing';
+    typing.innerHTML = '<span></span><span></span><span></span>';
+    wrap.appendChild(avatar); wrap.appendChild(typing);
+    chat.appendChild(wrap);
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  function removeTyping() {
+    const el = document.getElementById('typing-wrap');
+    if (el) el.remove();
+  }
+
+  /* ── Send ── */
+  async function send(text) {
+    text = text.trim();
+    if (!text) return;
+    document.getElementById('user-input').value = '';
+    addMsg(text, 'user');
+    addTyping();
+    await new Promise(r => setTimeout(r, 420));
+    removeTyping();
+    const result = getAnswer(text);
+    if (result) {
+      addMsg(result.answer, 'bot', result.category);
+    } else {
+      addMsg("I couldn't find an answer. Try rephrasing!", 'bot');
+    }
+  }
+
+  /* ── Events ── */
+  document.getElementById('send-btn').addEventListener('click', () => {
+    send(document.getElementById('user-input').value);
+  });
+  document.getElementById('user-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') send(e.target.value);
+  });
+
+  document.querySelectorAll('.sugg-btn').forEach(btn => {
+    btn.addEventListener('click', () => send(btn.textContent));
+  });
+
+  document.querySelectorAll('.cat-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeCategory = btn.dataset.cat;
+    });
+  });
+
+  loadData();
+</script>
+</body>
+</html>
