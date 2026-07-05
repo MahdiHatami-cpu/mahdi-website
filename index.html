@@ -168,79 +168,9 @@
     }
 
     /* ── HERO ── */
-    .hero {
-      min-height: 100vh;
-      display: flex; align-items: center; justify-content: center;
-      padding: 120px 40px 80px;
-      position: relative; z-index: 1;
-    }
-    .hero-inner {
-      display: flex; flex-direction: column; align-items: center;
-      text-align: center; gap: 20px; max-width: 700px;
-    }
-    .hero-badge {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 8px 18px; border-radius: 100px;
-      background: rgba(108,99,255,0.1); border: 1px solid rgba(108,99,255,0.25);
-      color: #6c63ff; font-weight: 600; font-size: .85rem;
-      animation: fadeUp .6s .1s both;
-    }
-    .hero-badge .dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: #22c55e; animation: pulse 2s infinite;
-    }
     @keyframes pulse {
       0%,100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.7); }
       50% { box-shadow: 0 0 0 8px rgba(34,197,94,0); }
-    }
-    .hero-photo {
-      width: 180px; height: 180px; border-radius: 50%;
-      object-fit: cover;
-      border: 3px solid rgba(108,99,255,0.4);
-      box-shadow: 0 0 50px rgba(108,99,255,0.25), 0 16px 40px rgba(0,0,0,0.3);
-      animation: fadeUp .6s .15s both, floatPhoto 5s ease-in-out infinite;
-    }
-    @keyframes floatPhoto { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-    .hero h1 {
-      font-size: clamp(2.8rem, 7vw, 5rem);
-      line-height: 1.05; letter-spacing: -0.03em;
-      background: linear-gradient(135deg, #fff 0%, #a78bfa 50%, #6c63ff 100%);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      animation: fadeUp .6s .2s both;
-    }
-    .hero-typewriter {
-      font-size: clamp(1rem, 2.2vw, 1.3rem);
-      color: #a78bfa; font-weight: 700;
-      min-height: 1.6em;
-      animation: fadeUp .6s .25s both;
-    }
-    .hero-typewriter .tw-cursor {
-      display: inline-block; width: 2px; height: 1.1em;
-      background: #a78bfa; margin-right: 4px;
-      vertical-align: text-bottom;
-      animation: blink .7s infinite;
-    }
-    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
-    .hero p.sub {
-      font-size: 1.1rem; color: rgba(255,255,255,0.45);
-      line-height: 1.8; max-width: 520px;
-      animation: fadeUp .6s .3s both;
-    }
-    .hero-chips {
-      display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;
-      animation: fadeUp .6s .35s both;
-    }
-    .chip {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 7px 16px; border-radius: 10px;
-      background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
-      color: rgba(255,255,255,0.5); font-size: .85rem; font-weight: 600;
-      transition: all .3s;
-    }
-    .chip:hover { background: rgba(108,99,255,0.12); border-color: rgba(108,99,255,0.3); color: #a78bfa; transform: translateY(-2px); }
-    .hero-btns {
-      display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
-      animation: fadeUp .6s .4s both;
     }
     .btn {
       display: inline-flex; align-items: center; gap: 8px;
@@ -259,22 +189,6 @@
       border: 1px solid rgba(255,255,255,0.12);
     }
     .btn-ghost:hover { background: rgba(108,99,255,0.1); border-color: rgba(108,99,255,0.3); transform: translateY(-3px); }
-    .stats {
-      display: flex; gap: 40px; margin-top: 8px;
-      animation: fadeUp .6s .45s both;
-    }
-    .stat-item { text-align: center; }
-    .stat-num { display: block; font-size: 1.6rem; font-weight: 900; color: #fff; }
-    .stat-label { font-size: .8rem; color: rgba(255,255,255,0.35); }
-
-    .scroll-arrow {
-      position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%);
-      color: rgba(255,255,255,0.2); font-size: 1.2rem;
-      animation: scrollBounce 2s ease-in-out infinite;
-    }
-    @keyframes scrollBounce { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(8px)} }
-
-    @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
 
     /* ── SECTIONS ── */
     section {
@@ -773,29 +687,6 @@
 
   <div class="divider"></div>
 
-  <!-- HERO -->
-  <section class="hero" id="hero">
-    <div class="hero-inner">
-      <div class="hero-badge"><span class="dot"></span> آنلاین و در دسترس</div>
-      <h1>مهدی حاتمی</h1>
-      <div class="hero-typewriter">
-        <span id="tw-text"></span><span class="tw-cursor" aria-hidden="true"></span>
-      </div>
-      <p class="sub">چیزایی می‌سازم که خودم بهشون نیاز دارم. بعضیاشون شاید به درد شما هم بخورن.</p>
-      <div class="hero-chips">
-        <span class="chip"><i class="fa-solid fa-globe"></i> توسعه وب</span>
-        <span class="chip"><i class="fa-solid fa-gamepad"></i> بازی</span>
-        <span class="chip"><i class="fa-solid fa-wrench"></i> ابزارسازی</span>
-        <span class="chip"><i class="fa-solid fa-lightbulb"></i> ایده‌پردازی</span>
-      </div>
-      <div class="hero-btns">
-        <a href="#projects" class="btn btn-primary"><i class="fa-solid fa-rocket"></i> پروژه‌ها</a>
-        <a href="#contact" class="btn btn-ghost"><i class="fa-solid fa-envelope"></i> تماس با من</a>
-      </div>
-    </div>
-    <div class="scroll-arrow" aria-hidden="true"><i class="fa-solid fa-chevron-down"></i></div>
-  </section>
-
   <!-- ABOUT -->
   <section id="about">
     <div class="container">
@@ -1036,27 +927,6 @@
       });
     }, { threshold: 0.35 });
     document.querySelectorAll('section[id]').forEach(s => sectionObs.observe(s));
-
-    /* ── Typewriter ── */
-    const words = ['توسعه‌دهنده وب', 'سازنده ابزار', 'عاشق بازی', 'کدنویس'];
-    const emojis = ['🌐', '🛠️', '🎮', '💻'];
-    let wi = 0, ci = 0, del = false;
-    const twEl = document.getElementById('tw-text');
-
-    function typeTick() {
-      const w = words[wi];
-      if (!del) {
-        ci++;
-        twEl.textContent = w.substring(0, ci) + ' ' + emojis[wi];
-        if (ci === w.length) { del = true; setTimeout(typeTick, 2000); return; }
-      } else {
-        ci--;
-        twEl.textContent = w.substring(0, ci) + ' ' + emojis[wi];
-        if (ci === 0) { del = false; wi = (wi + 1) % words.length; }
-      }
-      setTimeout(typeTick, del ? 50 : 90);
-    }
-    setTimeout(typeTick, 800);
 
     /* ── Scroll Reveal ── */
     const revealObs = new IntersectionObserver(entries => {
