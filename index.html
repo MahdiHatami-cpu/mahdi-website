@@ -426,18 +426,43 @@
       display: flex; gap: 14px; flex-wrap: wrap;
     }
     .featured-screenshots {
-      display: flex; flex-direction: column; gap: 20px;
+      display: flex; flex-direction: column; gap: 16px;
     }
-    .featured-img {
-      width: 100%; border-radius: 16px;
+    .screenshot-slider {
+      position: relative; overflow: hidden;
+      border-radius: 16px;
       border: 1px solid rgba(108,99,255,0.2);
       box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-      transition: transform .3s, box-shadow .3s;
     }
-    .featured-img:hover {
-      transform: scale(1.02);
-      box-shadow: 0 12px 40px rgba(108,99,255,0.2);
+    .slider-track {
+      display: flex; transition: transform .4s ease;
     }
+    .slider-track .featured-img {
+      min-width: 100%; border-radius: 0; border: none; box-shadow: none;
+    }
+    .slider-btn {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      width: 40px; height: 40px; border-radius: 50%;
+      background: rgba(10,10,10,0.7); border: 1px solid rgba(108,99,255,0.3);
+      color: #fff; font-size: 1.2rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .2s, border-color .2s;
+      z-index: 2;
+    }
+    .slider-btn:hover {
+      background: rgba(108,99,255,0.5); border-color: #6c63ff;
+    }
+    .slider-prev { left: 12px; }
+    .slider-next { right: 12px; }
+    .slider-dots {
+      display: flex; justify-content: center; gap: 8px;
+    }
+    .slider-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: rgba(255,255,255,0.2); cursor: pointer;
+      transition: background .2s;
+    }
+    .slider-dot.active { background: #6c63ff; }
     @media (max-width: 768px) {
       .featured-grid { grid-template-columns: 1fr; gap: 40px; text-align: center; }
       .featured-tags { justify-content: center; }
@@ -725,8 +750,18 @@
           </div>
         </div>
         <div class="featured-screenshots">
-          <img src="./scrchat1.PNG" alt="Community Chat - Main View" class="featured-img" loading="lazy">
-          <img src="./scrchat2.PNG" alt="Community Chat - DM Feature" class="featured-img" loading="lazy">
+          <div class="screenshot-slider">
+            <button class="slider-btn slider-prev" id="slider-prev" aria-label="Previous">&#10095;</button>
+            <div class="slider-track">
+              <img src="./scrchat1.PNG" alt="Community Chat - Main View" class="featured-img active" loading="lazy">
+              <img src="./scrchat2.PNG" alt="Community Chat - DM Feature" class="featured-img" loading="lazy">
+            </div>
+            <button class="slider-btn slider-next" id="slider-next" aria-label="Next">&#10094;</button>
+          </div>
+          <div class="slider-dots">
+            <span class="slider-dot active" data-index="0"></span>
+            <span class="slider-dot" data-index="1"></span>
+          </div>
         </div>
       </div>
     </div>
@@ -1029,6 +1064,26 @@
       });
     }, { threshold: 0.15 });
     document.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
+
+    /* ── Screenshot Slider ── */
+    const sliderTrack = document.querySelector('.slider-track');
+    const sliderDots = document.querySelectorAll('.slider-dot');
+    let currentSlide = 0;
+    const totalSlides = document.querySelectorAll('.slider-track .featured-img').length;
+
+    function goToSlide(index) {
+      if (index < 0) index = totalSlides - 1;
+      if (index >= totalSlides) index = 0;
+      currentSlide = index;
+      sliderTrack.style.transform = `translateX(-${currentSlide * 100}%)`;
+      sliderDots.forEach((dot, i) => dot.classList.toggle('active', i === currentSlide));
+    }
+
+    document.getElementById('slider-prev')?.addEventListener('click', () => goToSlide(currentSlide - 1));
+    document.getElementById('slider-next')?.addEventListener('click', () => goToSlide(currentSlide + 1));
+    sliderDots.forEach(dot => {
+      dot.addEventListener('click', () => goToSlide(parseInt(dot.dataset.index)));
+    });
 
   })();
 
