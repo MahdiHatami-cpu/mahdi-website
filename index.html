@@ -167,11 +167,6 @@
       .mobile-menu { display: block; }
     }
 
-    /* ── HERO ── */
-    @keyframes pulse {
-      0%,100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.7); }
-      50% { box-shadow: 0 0 0 8px rgba(34,197,94,0); }
-    }
     .btn {
       display: inline-flex; align-items: center; gap: 8px;
       padding: 14px 28px; border-radius: 12px;
@@ -270,122 +265,6 @@
       .about-socials { justify-content: center; }
     }
 
-    /* ── SKILLS ── */
-    .skills-grid {
-      display: grid; grid-template-columns: 1fr 1fr;
-      gap: 20px; margin-top: 48px;
-    }
-    .skill-card {
-      padding: 30px 24px; border-radius: 18px;
-      background: linear-gradient(135deg, rgba(108,99,255,0.06), rgba(124,58,237,0.04));
-      border: 1px solid rgba(255,255,255,0.08);
-      border-top: 2px solid rgba(108,99,255,0.3);
-      backdrop-filter: blur(10px);
-      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-      transition: all .3s;
-      display: flex; flex-direction: column; gap: 10px;
-    }
-    .skill-card:hover {
-      background: linear-gradient(135deg, rgba(108,99,255,0.1), rgba(124,58,237,0.07));
-      border-color: rgba(108,99,255,0.4);
-      border-top-color: rgba(108,99,255,0.6);
-      transform: translateY(-5px);
-      box-shadow: 0 12px 32px rgba(108,99,255,0.15);
-    }
-    .skill-icon {
-      width: 48px; height: 48px; border-radius: 14px;
-      display: grid; place-items: center;
-      font-size: 1.3rem;
-    }
-    .skill-card h3 {
-      font-size: 1.05rem; font-weight: 700; margin: 0;
-    }
-    .skill-card p {
-      font-size: .88rem; color: rgba(255,255,255,0.4); line-height: 1.7; margin: 0;
-    }
-
-    @media (max-width: 600px) { .skills-grid { grid-template-columns: 1fr; } }
-
-    /* ── FEATURED PROJECT ── */
-    .featured-grid {
-      display: grid; grid-template-columns: 1fr 1fr;
-      gap: 60px; align-items: center;
-    }
-    .featured-badge {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 8px 18px; border-radius: 100px;
-      background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.25);
-      color: #22c55e; font-weight: 600; font-size: .85rem;
-      margin-bottom: 20px;
-    }
-    .featured-badge .dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: #22c55e; animation: pulse 2s infinite;
-    }
-    .featured-title {
-      font-size: clamp(2rem, 4vw, 3rem);
-      font-weight: 900; line-height: 1.15;
-      background: linear-gradient(135deg, #fff 0%, #a78bfa 50%, #6c63ff 100%);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      margin-bottom: 16px;
-    }
-    .featured-desc {
-      font-size: 1.05rem; color: rgba(255,255,255,0.45);
-      line-height: 1.8; margin-bottom: 24px;
-    }
-    .featured-tags {
-      display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 28px;
-    }
-    .featured-btns {
-      display: flex; gap: 14px; flex-wrap: wrap;
-    }
-    .featured-screenshots {
-      display: flex; flex-direction: column; gap: 16px;
-      width: 100%; max-width: 300px;
-      margin: 0 auto;
-    }
-    .screenshot-slider {
-      position: relative; overflow: hidden;
-      border-radius: 16px;
-      border: 1px solid rgba(108,99,255,0.2);
-      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-    }
-    .slider-track {
-      display: flex; transition: transform .4s ease;
-    }
-    .slider-track .featured-img {
-      min-width: 100%; display: block;
-      width: 100%; height: auto;
-      border-radius: 0; border: none; box-shadow: none;
-    }
-    .slider-btn {
-      position: absolute; top: 50%; transform: translateY(-50%);
-      width: 40px; height: 40px; border-radius: 50%;
-      background: rgba(10,10,10,0.7); border: 1px solid rgba(108,99,255,0.3);
-      color: #fff; font-size: 1.2rem; cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: background .2s, border-color .2s;
-      z-index: 2;
-    }
-    .slider-btn:hover {
-      background: rgba(108,99,255,0.5); border-color: #6c63ff;
-    }
-    .slider-prev { left: 12px; }
-    .slider-next { right: 12px; }
-    .slider-dots {
-      display: flex; justify-content: center; gap: 8px;
-    }
-    .slider-dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      background: rgba(255,255,255,0.2); cursor: pointer;
-      transition: background .2s;
-    }
-    .slider-dot.active { background: #6c63ff; }
-    @media (max-width: 768px) {
-      .featured-grid { grid-template-columns: 1fr; gap: 40px; text-align: center; }
-      .featured-tags { justify-content: center; }
-      .featured-btns { justify-content: center; }
-    }
 
     /* ── PROJECTS ── */
     .projects-grid {
@@ -417,6 +296,7 @@
       height: 60px;
       background: linear-gradient(to top, #0a0a0a, transparent);
     }
+    .project-visual img { width: 100%; height: 100%; object-fit: cover; }
     .project-body { padding: 24px; flex: 1; display: flex; flex-direction: column; }
     .project-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
     .tag {
@@ -628,7 +508,6 @@
     <a href="#" class="logo">M<span>.</span>Hatami</a>
     <ul class="nav-links">
       <li><a href="#about">درباره</a></li>
-      <li><a href="#skills">مهارت‌ها</a></li>
       <li><a href="#projects">پروژه‌ها</a></li>
       <li><a href="#contact">تماس</a></li>
     </ul>
@@ -639,7 +518,6 @@
   </nav>
   <div class="mobile-menu" id="mobile-menu">
     <a href="#about">درباره</a>
-    <a href="#skills">مهارت‌ها</a>
     <a href="#projects">پروژه‌ها</a>
     <a href="#contact">تماس</a>
   </div>
@@ -670,113 +548,6 @@
 
   <div class="divider"></div>
 
-  <!-- FEATURED PROJECT -->
-  <section id="featured">
-    <div class="container">
-      <div class="featured-grid">
-        <div class="featured-info">
-          <div class="featured-badge"><span class="dot"></span> Featured Project</div>
-          <h2 class="featured-title">Community Chat</h2>
-          <p class="featured-desc">A modern real-time chat application built with Cloudflare Workers, featuring secure authentication, real-time messaging, emoji reactions, file sharing, and a responsive Progressive Web App experience.</p>
-          <div class="featured-tags">
-            <span class="tag">Cloudflare Workers</span>
-            <span class="tag">Cloudflare D1</span>
-            <span class="tag">JavaScript</span>
-            <span class="tag">JWT</span>
-            <span class="tag">PWA</span>
-            <span class="tag">HTML</span>
-            <span class="tag">CSS</span>
-          </div>
-          <div class="featured-btns">
-            <a href="https://chat.hatami-mahdi.ir" target="_blank" class="btn btn-primary"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open Chat</a>
-            <!-- TODO: Add GitHub link -->
-            <a href="#" class="btn btn-ghost"><i class="fa-brands fa-github"></i> View Source</a>
-          </div>
-        </div>
-        <div class="featured-screenshots">
-          <div class="screenshot-slider">
-            <button class="slider-btn slider-prev" id="slider-prev" aria-label="Previous">&#10095;</button>
-            <div class="slider-track">
-              <img src="./scrchat1.PNG" alt="Community Chat - Main View" class="featured-img active" loading="lazy">
-              <img src="./scrchat2.PNG" alt="Community Chat - DM Feature" class="featured-img" loading="lazy">
-            </div>
-            <button class="slider-btn slider-next" id="slider-next" aria-label="Next">&#10094;</button>
-          </div>
-          <div class="slider-dots">
-            <span class="slider-dot active" data-index="0"></span>
-            <span class="slider-dot" data-index="1"></span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <div class="divider"></div>
-
-  <!-- SKILLS -->
-  <section id="skills">
-    <div class="container">
-      <div class="section-center reveal">
-        <span class="section-label">مهارت‌ها</span>
-        <h2 class="section-title">ابزارهایی که <span style="color:#6c63ff">استفاده می‌کنم</span></h2>
-      </div>
-      <div class="skills-grid">
-        <div class="skill-card reveal">
-          <div class="skill-icon" style="background:rgba(227,76,38,0.12);color:#e34c26;"><i class="fa-brands fa-html5"></i></div>
-          <h3>HTML</h3>
-          <p>ساختار اصلی صفحات وب با تگ‌های معنایی، فرم‌ها و محتوای منظم.</p>
-        </div>
-        <div class="skill-card reveal">
-          <div class="skill-icon" style="background:rgba(38,76,227,0.12);color:#264ce7;"><i class="fa-brands fa-css3-alt"></i></div>
-          <h3>CSS</h3>
-          <p>طراحی و زیباسازی صفحات؛ شامل layout، انیمیشن‌ها و طراحی ریسپانسیو.</p>
-        </div>
-        <div class="skill-card reveal">
-          <div class="skill-icon" style="background:rgba(247,222,30,0.12);color:#f7df1e;"><i class="fa-brands fa-js"></i></div>
-          <h3>JavaScript</h3>
-          <p>زنده کردن صفحات وب با تعامل، انیمیشن‌ها و رفتارهای داینامیک.</p>
-        </div>
-        <div class="skill-card reveal">
-          <div class="skill-icon" style="background:rgba(55,118,171,0.12);color:#3776ab;"><i class="fa-brands fa-python"></i></div>
-          <h3>Python</h3>
-          <p>برای ساخت ابزارها، اتوماسیون و پروژه‌های ساده هوش مصنوعی و چت‌بات‌ها.</p>
-        </div>
-        <div class="skill-card reveal">
-          <div class="skill-icon" style="background:rgba(108,99,255,0.12);color:#6c63ff;"><i class="fa-solid fa-gamepad"></i></div>
-          <h3>Game Dev</h3>
-          <p>علاقه‌مند به بازی‌سازی و تحلیل مکانیک بازی‌ها (خصوصاً Minecraft).</p>
-        </div>
-        <div class="skill-card reveal">
-          <div class="skill-icon" style="background:rgba(240,80,50,0.12);color:#f05032;"><i class="fa-brands fa-git-alt"></i></div>
-          <h3>Git</h3>
-          <p>مدیریت نسخه‌ها و کنترل تغییرات پروژه‌ها به شکل حرفه‌ای و مرتب.</p>
-        </div>
-        <div class="skill-card reveal">
-          <div class="skill-icon" style="background:rgba(236,72,153,0.12);color:#ec4899;"><i class="fa-solid fa-palette"></i></div>
-          <h3>UI Design</h3>
-          <p>طراحی ساده، تمیز و کاربرمحور؛ تمرکز روی تجربه کاربری بهتر.</p>
-        </div>
-        <div class="skill-card reveal">
-          <div class="skill-icon" style="background:rgba(108,99,255,0.12);color:#6c63ff;"><i class="fa-solid fa-robot"></i></div>
-          <h3>AI Tools (Claude)</h3>
-          <p>کمک در کدنویسی، ایده‌پردازی و یادگیری سریع‌تر توسعه نرم‌افزار.</p>
-        </div>
-        <div class="skill-card reveal">
-          <div class="skill-icon" style="background:rgba(63,185,80,0.12);color:#3FB950;"><i class="fa-solid fa-microchip"></i></div>
-          <h3>AI Tools (Mimo)</h3>
-          <p>اپ یادگیری برنامه‌نویسی برای تمرین و حل مسائل کدنویسی.</p>
-        </div>
-        <div class="skill-card reveal">
-          <div class="skill-icon" style="background:rgba(245,158,11,0.12);color:#f59e0b;"><i class="fa-solid fa-cloud"></i></div>
-          <h3>Cloudflare</h3>
-          <p>مدیریت دامنه، DNS و افزایش سرعت و امنیت سایت‌ها.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <div class="divider"></div>
-
   <!-- PROJECTS -->
   <section id="projects">
     <div class="container">
@@ -786,6 +557,19 @@
         <p class="desc">چندتا از کارهایی که انجام دادم.</p>
       </div>
       <div class="projects-grid">
+        <div class="project-card reveal">
+          <div class="project-visual"><img src="./scrchat1.PNG" alt="Community Chat" loading="lazy"></div>
+          <div class="project-body">
+            <div class="project-tags">
+              <span class="tag">Cloudflare Workers</span>
+              <span class="tag">D1</span>
+              <span class="tag">PWA</span>
+            </div>
+            <h3>Community Chat</h3>
+            <p>یک چت‌روم آنلاین با Cloudflare Workers و D1؛ ثبت‌نام و ورود امن، پیام مستقیم بین کاربران، ری‌اکشن روی پیام‌ها و پشتیبانی از حالت PWA.</p>
+            <a href="https://chat.hatami-mahdi.ir" target="_blank" class="project-link"><i class="fa-solid fa-arrow-up-right-from-square"></i> بازکردن چت</a>
+          </div>
+        </div>
         <div class="project-card reveal">
           <div class="project-visual">🤖</div>
           <div class="project-body">
@@ -938,26 +722,6 @@
       });
     }, { threshold: 0.15 });
     document.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
-
-    /* ── Screenshot Slider ── */
-    const sliderTrack = document.querySelector('.slider-track');
-    const sliderDots = document.querySelectorAll('.slider-dot');
-    let currentSlide = 0;
-    const totalSlides = document.querySelectorAll('.slider-track .featured-img').length;
-
-    function goToSlide(index) {
-      if (index < 0) index = totalSlides - 1;
-      if (index >= totalSlides) index = 0;
-      currentSlide = index;
-      sliderTrack.style.transform = `translateX(-${currentSlide * 100}%)`;
-      sliderDots.forEach((dot, i) => dot.classList.toggle('active', i === currentSlide));
-    }
-
-    document.getElementById('slider-prev')?.addEventListener('click', () => goToSlide(currentSlide - 1));
-    document.getElementById('slider-next')?.addEventListener('click', () => goToSlide(currentSlide + 1));
-    sliderDots.forEach(dot => {
-      dot.addEventListener('click', () => goToSlide(parseInt(dot.dataset.index)));
-    });
 
   })();
 
