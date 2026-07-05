@@ -314,29 +314,28 @@
   <button id="send-btn">SEND ▶</button>
 </div>
 
+<script src="./qa_data.js"></script>
 <script>
-  let QA = [];
+  let QA = typeof QA_EMBEDDED !== 'undefined' ? QA_EMBEDDED : [];
   let activeCategory = 'all';
 
-  /* ── Load Q&A JSON ── */
-  async function loadData() {
+  /* ── Load Q&A from embedded data ── */
+  function loadData() {
     const bar  = document.getElementById('load-bar');
     const text = document.getElementById('load-text');
-    try {
-      bar.style.width = '30%';
-      text.textContent = 'Fetching database...';
-      const res = await fetch('./qa_data.json');
+    bar.style.width = '30%';
+    text.textContent = 'Loading database...';
+    setTimeout(() => {
       bar.style.width = '60%';
       text.textContent = 'Parsing data...';
-      QA = await res.json();
-      bar.style.width = '100%';
-      text.textContent = `Loaded ${QA.length.toLocaleString()} pairs!`;
-      await new Promise(r => setTimeout(r, 600));
-      document.getElementById('loading').style.display = 'none';
-    } catch(e) {
-      text.textContent = 'Error loading qa_data.json!';
-      bar.style.background = '#ff5555';
-    }
+      setTimeout(() => {
+        bar.style.width = '100%';
+        text.textContent = `Loaded ${QA.length.toLocaleString()} pairs!`;
+        setTimeout(() => {
+          document.getElementById('loading').style.display = 'none';
+        }, 600);
+      }, 200);
+    }, 200);
   }
 
   /* ── Simple TF-IDF style matching ── */
