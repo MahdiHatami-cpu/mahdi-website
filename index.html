@@ -392,6 +392,58 @@
 
     @media (max-width: 600px) { .skills-grid { grid-template-columns: 1fr; } }
 
+    /* ── FEATURED PROJECT ── */
+    .featured-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 60px; align-items: center;
+    }
+    .featured-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 8px 18px; border-radius: 100px;
+      background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.25);
+      color: #22c55e; font-weight: 600; font-size: .85rem;
+      margin-bottom: 20px;
+    }
+    .featured-badge .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #22c55e; animation: pulse 2s infinite;
+    }
+    .featured-title {
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 900; line-height: 1.15;
+      background: linear-gradient(135deg, #fff 0%, #a78bfa 50%, #6c63ff 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 16px;
+    }
+    .featured-desc {
+      font-size: 1.05rem; color: rgba(255,255,255,0.45);
+      line-height: 1.8; margin-bottom: 24px;
+    }
+    .featured-tags {
+      display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 28px;
+    }
+    .featured-btns {
+      display: flex; gap: 14px; flex-wrap: wrap;
+    }
+    .featured-screenshots {
+      display: flex; flex-direction: column; gap: 20px;
+    }
+    .featured-img {
+      width: 100%; border-radius: 16px;
+      border: 1px solid rgba(108,99,255,0.2);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      transition: transform .3s, box-shadow .3s;
+    }
+    .featured-img:hover {
+      transform: scale(1.02);
+      box-shadow: 0 12px 40px rgba(108,99,255,0.2);
+    }
+    @media (max-width: 768px) {
+      .featured-grid { grid-template-columns: 1fr; gap: 40px; text-align: center; }
+      .featured-tags { justify-content: center; }
+      .featured-btns { justify-content: center; }
+    }
+
     /* ── PROJECTS ── */
     .projects-grid {
       display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -648,6 +700,39 @@
     <a href="#projects">پروژه‌ها</a>
     <a href="#contact">تماس</a>
   </div>
+
+  <!-- FEATURED PROJECT -->
+  <section id="featured">
+    <div class="container">
+      <div class="featured-grid">
+        <div class="featured-info">
+          <div class="featured-badge"><span class="dot"></span> Featured Project</div>
+          <h2 class="featured-title">Community Chat</h2>
+          <p class="featured-desc">A modern real-time chat application built with Cloudflare Workers, featuring secure authentication, real-time messaging, emoji reactions, file sharing, and a responsive Progressive Web App experience.</p>
+          <div class="featured-tags">
+            <span class="tag">Cloudflare Workers</span>
+            <span class="tag">Cloudflare D1</span>
+            <span class="tag">JavaScript</span>
+            <span class="tag">JWT</span>
+            <span class="tag">PWA</span>
+            <span class="tag">HTML</span>
+            <span class="tag">CSS</span>
+          </div>
+          <div class="featured-btns">
+            <a href="https://chat.hatami-mahdi.ir" target="_blank" class="btn btn-primary"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open Chat</a>
+            <!-- TODO: Add GitHub link -->
+            <a href="#" class="btn btn-ghost"><i class="fa-brands fa-github"></i> View Source</a>
+          </div>
+        </div>
+        <div class="featured-screenshots">
+          <img src="./scrChat1.png" alt="Community Chat - Main View" class="featured-img" loading="lazy">
+          <img src="./scrChat2.png" alt="Community Chat - DM Feature" class="featured-img" loading="lazy">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
 
   <!-- HERO -->
   <section class="hero" id="hero">
