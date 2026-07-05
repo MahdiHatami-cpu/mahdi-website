@@ -427,6 +427,8 @@
     }
     .featured-screenshots {
       display: flex; flex-direction: column; gap: 16px;
+      width: 100%; max-width: 300px;
+      margin: 0 auto;
     }
     .screenshot-slider {
       position: relative; overflow: hidden;
@@ -438,7 +440,9 @@
       display: flex; transition: transform .4s ease;
     }
     .slider-track .featured-img {
-      min-width: 100%; border-radius: 0; border: none; box-shadow: none;
+      min-width: 100%; display: block;
+      width: 100%; height: auto;
+      border-radius: 0; border: none; box-shadow: none;
     }
     .slider-btn {
       position: absolute; top: 50%; transform: translateY(-50%);
