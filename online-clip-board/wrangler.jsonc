@@ -1,0 +1,30 @@
+{
+  "name": "online-clipboard",
+  "compatibility_date": "2024-12-02",
+  "pages_build_output_dir": "./public",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "clipboard-db",
+      "database_id": "PLACEHOLDER_RUN_DB_CREATE"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "RATE_LIMITS",
+      "id": "PLACEHOLDER_RUN_KV_CREATE"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "clipboard-files"
+    }
+  ],
+  "vars": {
+    "SITE_URL": "https://clipboard.mahdihatami.com"
+  },
+  "triggers": {
+    "crons": ["* * * * *"]
+  }
+}

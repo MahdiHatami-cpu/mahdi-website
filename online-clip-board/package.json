@@ -1,0 +1,19 @@
+{
+  "name": "online-clipboard",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npx wrangler pages dev",
+    "deploy": "npx wrangler pages deploy public",
+    "db:create": "npx wrangler d1 create clipboard-db",
+    "db:migrate": "npx wrangler d1 migrations apply clipboard-db --remote",
+    "kv:create": "npx wrangler kv:namespace create RATE_LIMITS",
+    "r2:create": "npx wrangler r2 bucket create clipboard-files"
+  },
+  "devDependencies": {
+    "wrangler": "^3.99.0"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  }
+}

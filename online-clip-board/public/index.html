@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Online Clipboard</title>
+  <meta name="theme-color" content="#6c63ff">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Clipboard</h1>
+      <button class="theme-toggle" id="theme-toggle" title="Toggle theme">
+        <span id="theme-icon">☀️</span>
+      </button>
+    </header>
+
+    <main>
+      <!-- Tabs -->
+      <div class="tabs">
+        <button class="tab active" data-tab="send">Send</button>
+        <button class="tab" data-tab="retrieve">Retrieve</button>
+      </div>
+
+      <!-- Send Tab -->
+      <div class="tab-content active" id="tab-send">
+        <div class="send-section">
+          <textarea id="text-input" placeholder="Paste or type text..." maxlength="2000"></textarea>
+          <div class="char-count"><span id="char-count">0</span>/2000</div>
+        </div>
+
+        <div class="divider"><span>OR</span></div>
+
+        <div class="drop-zone" id="drop-zone">
+          <div class="drop-zone-content" id="drop-zone-content">
+            <div class="drop-zone-icon">📁</div>
+            <p>Drag & drop a file here</p>
+            <p>or</p>
+            <button class="btn-secondary" id="file-picker-btn">Choose File</button>
+            <p class="hint">Max 50MB</p>
+          </div>
+          <div class="file-preview" id="file-preview" style="display:none;">
+            <span class="file-name" id="file-name"></span>
+            <span class="file-size" id="file-size"></span>
+            <button class="remove-file" id="remove-file">&times;</button>
+          </div>
+          <input type="file" id="file-input" style="display:none;">
+        </div>
+
+        <div class="expire-selector">
+          <label>Expire after:</label>
+          <div class="expire-options">
+            <button class="expire-btn" data-minutes="1">1m</button>
+            <button class="expire-btn" data-minutes="5">5m</button>
+            <button class="expire-btn" data-minutes="10">10m</button>
+            <button class="expire-btn active" data-minutes="15">15m</button>
+            <button class="expire-btn" data-minutes="30">30m</button>
+          </div>
+        </div>
+
+        <button class="btn-primary" id="upload-btn" disabled>Upload</button>
+      </div>
+
+      <!-- Retrieve Tab -->
+      <div class="tab-content" id="tab-retrieve">
+        <div class="retrieve-section">
+          <div class="code-input-group">
+            <input type="text" id="code-input" placeholder="Enter code" maxlength="5" pattern="[0-9]{5}" inputmode="numeric">
+            <button class="btn-primary" id="retrieve-btn">Retrieve</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Success Screen -->
+      <div class="success-screen" id="success-screen" style="display:none;">
+        <div class="success-card">
+          <h2>Uploaded!</h2>
+          <div class="code-display">
+            <span class="code" id="result-code"></span>
+            <button class="btn-copy" id="copy-code-btn">Copy</button>
+          </div>
+          <div class="qr-container" id="qr-container"></div>
+          <div class="countdown" id="countdown"></div>
+          <button class="btn-secondary" id="new-upload-btn">New Upload</button>
+        </div>
+      </div>
+
+      <!-- Result Screen -->
+      <div class="result-screen" id="result-screen" style="display:none;">
+        <div class="result-card">
+          <h2>Retrieved!</h2>
+          <div class="text-result" id="text-result" style="display:none;">
+            <pre id="retrieved-text"></pre>
+            <div class="result-actions">
+              <button class="btn-primary" id="copy-text-btn">Copy Text</button>
+              <button class="btn-secondary" id="download-txt-btn">Download TXT</button>
+            </div>
+          </div>
+          <div class="file-result" id="file-result" style="display:none;">
+            <div class="file-info">
+              <span class="file-name" id="result-file-name"></span>
+              <span class="file-size" id="result-file-size"></span>
+              <span class="file-type" id="result-file-type"></span>
+            </div>
+            <button class="btn-primary" id="download-file-btn">Download</button>
+          </div>
+          <div class="result-meta">
+            <span id="result-expires"></span>
+          </div>
+          <button class="btn-secondary" id="new-retrieve-btn">Retrieve Another</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Paste Overlay -->
+  <div class="paste-overlay" id="paste-overlay" style="display:none;">
+    <p>Content pasted!</p>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
