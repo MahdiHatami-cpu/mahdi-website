@@ -185,6 +185,62 @@
     }
     .btn-ghost:hover { background: rgba(108,99,255,0.1); border-color: rgba(108,99,255,0.3); transform: translateY(-3px); }
 
+    /* ── HERO 3D ── */
+    .hero-3d {
+      min-height: 80vh;
+      display: flex; align-items: center; justify-content: center;
+      text-align: center;
+      perspective: 800px;
+      padding-top: 100px;
+    }
+    .hero-3d-inner { display: flex; flex-direction: column; align-items: center; gap: 32px; }
+    .cube-scene {
+      width: 120px; height: 120px;
+      perspective: 400px;
+    }
+    .cube {
+      width: 100%; height: 100%;
+      position: relative;
+      transform-style: preserve-3d;
+      animation: cubeSpin 8s linear infinite;
+    }
+    .cube-face {
+      position: absolute;
+      width: 120px; height: 120px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: "Lalezar", sans-serif;
+      font-size: 1.1rem; font-weight: 700; color: #fff;
+      border: 2px solid rgba(108,99,255,0.4);
+      border-radius: 16px;
+      background: rgba(108,99,255,0.08);
+      backdrop-filter: blur(8px);
+      box-shadow: inset 0 0 30px rgba(108,99,255,0.1);
+    }
+    .cube-front  { transform: rotateY(0deg) translateZ(60px); }
+    .cube-back   { transform: rotateY(180deg) translateZ(60px); }
+    .cube-right  { transform: rotateY(90deg) translateZ(60px); }
+    .cube-left   { transform: rotateY(-90deg) translateZ(60px); }
+    .cube-top    { transform: rotateX(90deg) translateZ(60px); }
+    .cube-bottom { transform: rotateX(-90deg) translateZ(60px); }
+    @keyframes cubeSpin {
+      0%   { transform: rotateX(0deg) rotateY(0deg); }
+      25%  { transform: rotateX(90deg) rotateY(90deg); }
+      50%  { transform: rotateX(180deg) rotateY(180deg); }
+      75%  { transform: rotateX(270deg) rotateY(270deg); }
+      100% { transform: rotateX(360deg) rotateY(360deg); }
+    }
+    .hero-title {
+      font-size: clamp(2.5rem, 6vw, 4.5rem);
+      font-weight: 900; line-height: 1.1;
+      text-shadow: 0 0 40px rgba(108,99,255,0.3);
+    }
+    .hero-title span { color: #6c63ff; }
+    .hero-sub {
+      font-size: 1.1rem; font-weight: 600;
+      color: rgba(255,255,255,0.4);
+      letter-spacing: .05em;
+    }
+
     /* ── SECTIONS ── */
     section {
       padding: 100px clamp(20px, 5vw, 60px);
@@ -521,6 +577,24 @@
     <a href="#projects">پروژه‌ها</a>
     <a href="#contact">تماس</a>
   </div>
+
+  <!-- HERO 3D -->
+  <section class="hero-3d" id="hero">
+    <div class="hero-3d-inner">
+      <div class="cube-scene">
+        <div class="cube">
+          <div class="cube-face cube-front">Code</div>
+          <div class="cube-face cube-back">Build</div>
+          <div class="cube-face cube-right">Create</div>
+          <div class="cube-face cube-left">Design</div>
+          <div class="cube-face cube-top">Deploy</div>
+          <div class="cube-face cube-bottom">Ship</div>
+        </div>
+      </div>
+      <h1 class="hero-title">M<span>.</span>Hatami</h1>
+      <p class="hero-sub">Web Developer &amp; Builder</p>
+    </div>
+  </section>
 
   <!-- ABOUT -->
   <section id="about">
