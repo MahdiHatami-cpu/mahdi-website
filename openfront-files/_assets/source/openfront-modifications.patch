@@ -3501,10 +3501,10 @@ index 0000000..94112e6
 +}
 diff --git a/cloudflare/scripts/art.ts b/cloudflare/scripts/art.ts
 new file mode 100644
-index 0000000..cc54819
+index 0000000..2ef293e
 --- /dev/null
 +++ b/cloudflare/scripts/art.ts
-@@ -0,0 +1,72 @@
+@@ -0,0 +1,80 @@
 +// The site's own pictures: the loading screen's backdrop and the home page's backdrop.
 +//
 +// Source files live in cloudflare/art/ (small WebP re-encodings of the owner's artwork: wide
@@ -3536,9 +3536,17 @@ index 0000000..cc54819
 +  homeTall: "home-tall.webp",
 +};
 +
-+/** Copies cloudflare/art/* into <staticDir>/art/ under hashed names; returns their URLs. */
-+export function copyArt(artDir: string, staticDir: string): ArtUrls {
-+  const out = path.join(staticDir, "art");
++/**
++ * Copies cloudflare/art/* under hashed names and returns their URLs.
++ *
++ * Without a CDN they go to <staticDir>/art/ and are served by the Worker. With one (`cdnBase`) they
++ * go to <staticDir>/_assets/art/, which is published to the CDN with the rest of the site's files:
++ * from the Worker's own address even a 60-80 KB picture can stall on a bad connection (the same
++ * cut-off that stops the game's big files), and the page then shows no background.
++ */
++export function copyArt(artDir: string, staticDir: string, cdnBase = ""): ArtUrls {
++  const out = path.join(staticDir, cdnBase ? "_assets/art" : "art");
++  fs.rmSync(path.join(staticDir, "art"), { recursive: true, force: true });
 +  fs.rmSync(out, { recursive: true, force: true });
 +  fs.mkdirSync(out, { recursive: true });
 +  const urls = {} as ArtUrls;
@@ -3547,7 +3555,7 @@ index 0000000..cc54819
 +    const hash = crypto.createHash("sha256").update(bytes).digest("hex").slice(0, 10);
 +    const name = file.replace(/\.webp$/, `.${hash}.webp`);
 +    fs.writeFileSync(path.join(out, name), bytes);
-+    urls[key] = `/art/${name}`;
++    urls[key] = cdnBase ? `${cdnBase}/_assets/art/${name}` : `/art/${name}`;
 +  }
 +  return urls;
 +}
@@ -3949,7 +3957,7 @@ index 0000000..eb58976
 +  });
 diff --git a/cloudflare/scripts/build-site.ts b/cloudflare/scripts/build-site.ts
 new file mode 100644
-index 0000000..0e0fb58
+index 0000000..3b78c94
 --- /dev/null
 +++ b/cloudflare/scripts/build-site.ts
 @@ -0,0 +1,266 @@
@@ -4099,7 +4107,7 @@ index 0000000..0e0fb58
 +// Sign-in with Google or an emailed link (src/accounts/). ACCOUNTS=0 builds a guest-only page.
 +const accounts = process.env.ACCOUNTS !== "0";
 +// The pictures behind the loading screen and the home page (cloudflare/art -> static/art).
-+const art = copyArt(path.resolve(import.meta.dirname, "../art"), staticDir);
++const art = copyArt(path.resolve(import.meta.dirname, "../art"), staticDir, cdnBase);
 +const stripped = brandPage(stripThirdParty(html, { accountApiOrigin, accounts }), siteHost);
 +const page = injectServiceWorker(
 +  injectLoadingScreen(
@@ -14272,7 +14280,7 @@ index f481bd4..74fc5b9 100644
            ${translateText("game_starting_modal.code_license")}
          </p>
 diff --git a/src/client/LangSelector.ts b/src/client/LangSelector.ts
-index 92a8fa6..d90ff6a 100644
+index 92a8fa6..766da57 100644
 --- a/src/client/LangSelector.ts
 +++ b/src/client/LangSelector.ts
 @@ -18,6 +18,13 @@ type LanguageMetadata = {
@@ -14301,6 +14309,14 @@ index 92a8fa6..d90ff6a 100644
      const savedLang = localStorage.getItem("lang");
      const userLang = this.getClosestSupportedLang(savedLang ?? browserLocale);
  
+@@ -297,6 +307,7 @@ export class LangSelector extends LitElement {
+       "tribes-panel",
+       "steam-wishlist",
+       "steam-wishlist-button",
++      "news-box",
+       "streaming-now",
+       "tutorial-panel",
+     ];
 diff --git a/src/client/LeaderboardConfig.ts b/src/client/LeaderboardConfig.ts
 new file mode 100644
 index 0000000..755ce01
