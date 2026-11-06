@@ -1,0 +1,1 @@
+import{Nr as e,ia as t,ka as n,ri as r}from"./index-BAYE2tsk.js";async function i(){if(!await r())return{kind:`signed_out`};let i=await e();return i===!1?{kind:`unknown`}:n(i.user)||t.isOnGamePortal()&&await t.getUserProfile()!==null?{kind:`signed_in`,me:i}:{kind:`signed_out`}}export{i as t};

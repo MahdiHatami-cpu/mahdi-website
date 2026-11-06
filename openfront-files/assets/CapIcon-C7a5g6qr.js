@@ -1,0 +1,13 @@
+import{Xi as e,Yi as t,Zi as n,hi as r,na as i,po as a}from"./index-BAYE2tsk.js";var o=class extends n{constructor(...e){super(...e),this.size=48}createRenderRoot(){return this}render(){return i`
+      <div
+        class="inline-flex items-center justify-center"
+        style="width:${this.size}px; height:${this.size}px;"
+      >
+        <img
+          src=${a(`images/BottleCapIcon.svg`)}
+          alt="Caps"
+          style="width:${this.size}px; height:${this.size}px;"
+          draggable="false"
+        />
+      </div>
+    `}};r([t({type:Number})],o.prototype,`size`,void 0),o=r([e(`cap-icon`)],o);
