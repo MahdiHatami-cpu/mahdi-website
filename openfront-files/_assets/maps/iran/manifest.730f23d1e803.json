@@ -1,0 +1,180 @@
+{
+  "categories": ["featured", "countries", "asia"],
+  "featured_rank": 7,
+  "id": "Iran",
+  "map": {
+    "height": 1688,
+    "num_land_tiles": 2739011,
+    "width": 1864
+  },
+  "map16x": {
+    "height": 422,
+    "num_land_tiles": 170310,
+    "width": 466
+  },
+  "map4x": {
+    "height": 844,
+    "num_land_tiles": 683288,
+    "width": 932
+  },
+  "name": "Iran",
+  "nations": [
+    {
+      "coordinates": [729, 537],
+      "flag": "ir",
+      "name": "Tehran"
+    },
+    {
+      "coordinates": [669, 492],
+      "flag": "ir",
+      "name": "Alborz"
+    },
+    {
+      "coordinates": [301, 270],
+      "flag": "ir",
+      "name": "East Azerbaijan"
+    },
+    {
+      "coordinates": [155, 373],
+      "flag": "ir",
+      "name": "West Azerbaijan"
+    },
+    {
+      "coordinates": [437, 201],
+      "flag": "ir",
+      "name": "Ardabil"
+    },
+    {
+      "coordinates": [546, 339],
+      "flag": "ir",
+      "name": "Gilan"
+    },
+    {
+      "coordinates": [838, 441],
+      "flag": "ir",
+      "name": "Mazandaran"
+    },
+    {
+      "coordinates": [1038, 350],
+      "flag": "ir",
+      "name": "Golestan"
+    },
+    {
+      "coordinates": [1266, 316],
+      "flag": "ir",
+      "name": "North Khorasan"
+    },
+    {
+      "coordinates": [1439, 543],
+      "flag": "ir",
+      "name": "Razavi Khorasan"
+    },
+    {
+      "coordinates": [1466, 861],
+      "flag": "ir",
+      "name": "South Khorasan"
+    },
+    {
+      "coordinates": [1011, 565],
+      "flag": "ir",
+      "name": "Semnan"
+    },
+    {
+      "coordinates": [683, 643],
+      "flag": "ir",
+      "name": "Qom"
+    },
+    {
+      "coordinates": [583, 475],
+      "flag": "ir",
+      "name": "Qazvin"
+    },
+    {
+      "coordinates": [465, 419],
+      "flag": "ir",
+      "name": "Zanjan"
+    },
+    {
+      "coordinates": [465, 621],
+      "flag": "ir",
+      "name": "Hamadan"
+    },
+    {
+      "coordinates": [319, 543],
+      "flag": "ir",
+      "name": "Kurdistan"
+    },
+    {
+      "coordinates": [319, 665],
+      "flag": "ir",
+      "name": "Kermanshah"
+    },
+    {
+      "coordinates": [292, 774],
+      "flag": "ir",
+      "name": "Ilam"
+    },
+    {
+      "coordinates": [465, 764],
+      "flag": "ir",
+      "name": "Lorestan"
+    },
+    {
+      "coordinates": [574, 676],
+      "flag": "ir",
+      "name": "Markazi"
+    },
+    {
+      "coordinates": [829, 818],
+      "flag": "ir",
+      "name": "Isfahan"
+    },
+    {
+      "coordinates": [656, 904],
+      "flag": "ir",
+      "name": "Chaharmahal and Bakhtiari"
+    },
+    {
+      "coordinates": [683, 1054],
+      "flag": "ir",
+      "name": "Kohgiluyeh and Boyer-Ahmad"
+    },
+    {
+      "coordinates": [510, 979],
+      "flag": "ir",
+      "name": "Khuzestan"
+    },
+    {
+      "coordinates": [710, 1253],
+      "flag": "ir",
+      "name": "Bushehr"
+    },
+    {
+      "coordinates": [874, 1191],
+      "flag": "ir",
+      "name": "Fars"
+    },
+    {
+      "coordinates": [1147, 1398],
+      "flag": "ir",
+      "name": "Hormozgan"
+    },
+    {
+      "coordinates": [1284, 1138],
+      "flag": "ir",
+      "name": "Kerman"
+    },
+    {
+      "coordinates": [1002, 937],
+      "flag": "ir",
+      "name": "Yazd"
+    },
+    {
+      "coordinates": [1584, 1295],
+      "flag": "ir",
+      "name": "Sistan and Baluchestan"
+    }
+  ],
+  "themes": ["asia"],
+  "translation_key": "map.iran"
+}
