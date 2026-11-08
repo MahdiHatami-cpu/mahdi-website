@@ -11,10 +11,10 @@ index 0000000..3a0098c
 +.build/
 diff --git a/cloudflare/README.md b/cloudflare/README.md
 new file mode 100644
-index 0000000..ba5cd02
+index 0000000..a717b09
 --- /dev/null
 +++ b/cloudflare/README.md
-@@ -0,0 +1,381 @@
+@@ -0,0 +1,386 @@
 +# OpenFront on Cloudflare (Workers + Durable Objects + D1)
 +
 +A port of the game relay in `src/server`, plus the web client, to Cloudflare's Free
@@ -147,12 +147,17 @@ index 0000000..ba5cd02
 +downloads, and counts by the bytes that really arrive, every file the game needs apart from the maps,
 +and shows a bar with the percentage and megabytes (`scripts/preload-list.ts` builds the list from the
 +site: every script, stylesheet and font in `assets/`, the atlases, sprites, fonts and icons, the English
-+and Persian language files and the home picture for the screen shape; about 5.4 MB in 137 files; flags,
-+sounds and other pictures load when used, and the maps are never waited for). A file that stalls (no data
-+for `stallMs`) or ends shorter than its listed size is fetched again, up to `fileTries` times; if one
-+cannot be had the page reloads, up to `maxRetries` times, then the failure panel shows. It says OK once
-+the app has started, every file is here, and the browser reports the page and its fonts loaded (waiting
-+for that at most `lateMs`). It then holds for `okMs` (0.9 s) and opens like an iris onto the home page
++and Persian language files and the home picture for the screen shape; about 5.1 MB in 136 files; flags,
++sounds, the replay worker and other pictures load when used, and the maps are never waited for). It is
++lenient on purpose: only two files download at once until the app has started (so the app's own bundle
++is not crowded out), then six; a file that stalls (no data for `stallMs`, 8 s) or ends shorter than its
++listed size is fetched again, up to `fileTries` (3) times, and if it still cannot be had it is skipped
++(the game asks for it itself when it needs it): no reload and no failure panel for a file. Once the
++app is up it waits at most `waitMs` (20 s) for the files; after that the player is let in and the rest
++keeps downloading in the background. It says "Everything is OK" only when the app has started, every
++file is here, and the browser reports the page and its fonts loaded (waiting for that at most `lateMs`,
++3 s); if it let the player in early or skipped a file it says "Ready ✓ (the rest keeps loading while you
++play)" instead, so it never claims more than is true. It then holds for `okMs` (0.9 s) and opens like an iris onto the home page
 +(`leaveMs`, 1.4 s) while the home picture settles in (`html.cf-reveal`). "Slow" now means nothing has
 +arrived for `slowMs`, not that the load is long. `prefers-reduced-motion` gets a plain fade. All of
 +these can be shortened in tests through `window.CF_LOADING`. The files are cached by the browser (and by
@@ -5605,10 +5610,10 @@ index 0000000..39074e9
 +process.exit(failed ? 1 : 0);
 diff --git a/cloudflare/scripts/loading-screen.ts b/cloudflare/scripts/loading-screen.ts
 new file mode 100644
-index 0000000..316ed3e
+index 0000000..5409b9f
 --- /dev/null
 +++ b/cloudflare/scripts/loading-screen.ts
-@@ -0,0 +1,522 @@
+@@ -0,0 +1,553 @@
 +// The loading screen shown while the site opens.
 +//
 +// It is injected into the built page by build-site.ts, not into the client's own
@@ -5650,10 +5655,14 @@ index 0000000..316ed3e
 +  if (!el) return;
 +  // slowMs: no byte has arrived for this long. retryMs: the app has not started by then.
 +  // stallMs/fileTries: one file's download gives up after no data for stallMs, and is tried again
-+  // up to fileTries times. lateMs: the app and all files are here but the browser has not yet
-+  // said the page and its fonts are done; stop waiting for that after lateMs.
++  // up to fileTries times; a file that still cannot be had is skipped (the game fetches it itself
++  // when it needs it). startConcurrency/concurrency: downloads at once while the app is still
++  // starting, and after, so the app's own files are not crowded out. waitMs: the longest to wait
++  // for the files once the app is up; after that the player is let in and the rest keeps
++  // downloading in the background. lateMs: everything is here but the browser has not yet said the
++  // page and its fonts are done; stop waiting for that after lateMs.
 +  var cfg = { slowMs: 12000, retryMs: 30000, maxRetries: 3, failedRetryMs: 1500, okMs: 900, leaveMs: 1400,
-+              concurrency: 6, stallMs: 12000, fileTries: 6, lateMs: 15000 };
++              startConcurrency: 2, concurrency: 6, stallMs: 8000, fileTries: 3, waitMs: 20000, lateMs: 3000 };
 +  var o = window.CF_LOADING;
 +  if (o) for (var k in o) cfg[k] = o[k];
 +
@@ -5664,6 +5673,7 @@ index 0000000..316ed3e
 +        starting: "در حال راه‌اندازی…",
 +        detail: "{pct}٪ · {a} از {b} مگابایت",
 +        ok: "همه چیز اوکی شد ✓",
++        partial: "آماده است ✓ (بقیه فایل‌ها هنگام بازی بارگذاری می‌شوند)",
 +        slow: "هنوز در حال بارگذاری است. اتصال شما کند به نظر می‌رسد…",
 +        retrying: "بارگذاری کامل نشد. تلاش دوباره ({n} از {max})…",
 +        failTitle: "بازی بارگذاری نشد",
@@ -5676,6 +5686,7 @@ index 0000000..316ed3e
 +        starting: "Starting…",
 +        detail: "{pct}% · {a} of {b} MB",
 +        ok: "Everything is OK ✓",
++        partial: "Ready ✓ (the rest keeps loading while you play)",
 +        slow: "Still loading. Your connection seems slow…",
 +        retrying: "Loading did not finish. Trying again ({n} of {max})…",
 +        failTitle: "The game could not load",
@@ -5746,7 +5757,10 @@ index 0000000..316ed3e
 +  var total = 0;
 +  for (var pi = 0; pi < list.length; pi++) { part.push(0); total += list[pi][1]; }
 +  var filesDone = list.length === 0;
-+  var filesFailed = false;
++  var settled = 0; // files finished, one way or the other
++  var skipped = 0; // ...of which could not be had
++  var started = 0; // download workers running
++  var partialOpen = false; // let in before every file was here
 +  var appUp = false;
 +  var pageLoaded = document.readyState === "complete";
 +  var settling = false;
@@ -5830,12 +5844,31 @@ index 0000000..316ed3e
 +      });
 +  }
 +
++  // A file that cannot be had is skipped, not fatal: the game asks for it itself when it needs it,
++  // and the player must not be locked out of a working game over a picture.
 +  function takeNext() {
-+    if (filesFailed || nextFile >= list.length) return Promise.resolve();
++    if (nextFile >= list.length) return;
 +    var i = nextFile++;
-+    return fetchFile(i, 0).then(takeNext, function () {
-+      if (!filesFailed) { filesFailed = true; retry(); }
++    fetchFile(i, 0).then(function () {}, function () {
++      skipped++;
++      part[i] = list[i][1];
++      schedulePaint();
++    }).then(function () {
++      settled++;
++      if (settled >= list.length) allSettled(); else takeNext();
 +    });
++  }
++  function startWorkers(limit) {
++    var n = Math.min(limit, list.length);
++    while (started < n) { started++; takeNext(); }
++  }
++  function allSettled() {
++    if (finished) return;
++    filesDone = true;
++    lastMove = Date.now();
++    paint();
++    if (!slowShown && !retrying) msg.textContent = T.starting;
++    check();
 +  }
 +
 +  // Everything is here and the app is up, and the browser says the page itself (stylesheet,
@@ -5863,7 +5896,8 @@ index 0000000..316ed3e
 +    fail.hidden = true;
 +    msg.hidden = false;
 +    el.classList.remove("cf-failed");
-+    msg.textContent = T.ok;
++    // "Everything is OK" only when every file is here; otherwise say what is true.
++    msg.textContent = filesDone && skipped === 0 && !partialOpen ? T.ok : T.partial;
 +    el.classList.add("cf-ok");
 +    paint();
 +    setTimeout(leave, cfg.okMs);
@@ -5916,26 +5950,28 @@ index 0000000..316ed3e
 +  // The app has started once the entry bundle has defined its first component.
 +  if (window.customElements && customElements.whenDefined) {
 +    customElements.whenDefined("play-page").then(function () {
-+      setTimeout(function () { appUp = true; lastMove = Date.now(); check(); }, 300);
++      setTimeout(onAppUp, 300);
 +    });
 +  } else {
-+    appUp = true;
++    onAppUp();
 +  }
 +
-+  if (list.length) {
-+    var pool = [];
-+    for (var w = 0; w < Math.min(cfg.concurrency, list.length); w++) pool.push(takeNext());
-+    Promise.all(pool).then(function () {
-+      if (filesFailed || finished) return;
-+      filesDone = true;
-+      lastMove = Date.now();
-+      paint();
-+      if (!slowShown && !retrying) msg.textContent = T.starting;
-+      check();
-+    });
-+  } else {
++  // The app is up: now more files at once, and a limit on how long the rest may take.
++  function onAppUp() {
++    appUp = true;
++    lastMove = Date.now();
++    startWorkers(cfg.concurrency);
++    later(function () {
++      if (finished || filesDone) return;
++      partialOpen = true; // let the player in; the downloads carry on in the background
++      ready();
++    }, cfg.waitMs);
 +    check();
-+  }`;
++  }
++
++  // Until the app is up only a couple of files are fetched, so the app's own bundle and
++  // stylesheet get the connection first.
++  if (list.length) startWorkers(cfg.startConcurrency); else check();`;
 +
 +/** Where the credit link goes. */
 +export const CREDIT_URL = "https://hatami-mahdi.ir/";
@@ -6133,10 +6169,10 @@ index 0000000..316ed3e
 +}
 diff --git a/cloudflare/scripts/loading-smoke.ts b/cloudflare/scripts/loading-smoke.ts
 new file mode 100644
-index 0000000..79464ac
+index 0000000..a12bb20
 --- /dev/null
 +++ b/cloudflare/scripts/loading-smoke.ts
-@@ -0,0 +1,663 @@
+@@ -0,0 +1,713 @@
 +// Tests the loading screen in real Chrome by making the page's own app bundle slow,
 +// broken, or broken once:
 +//
@@ -6247,7 +6283,8 @@ index 0000000..79464ac
 +      hit += 1;
 +      if (s.preload === "delay") {
 +        await sleep(s.preloadDelayMs ?? 4000);
-+        return route.continue();
++        // The test may be over (page closed) by the time a long hold ends.
++        return route.continue().catch(() => undefined);
 +      }
 +      if (s.preload === "fail") return route.abort("connectionreset");
 +      if (s.preload === "failOnce") {
@@ -6686,7 +6723,7 @@ index 0000000..79464ac
 +        preload: "delay",
 +        preloadMatch: /Worker\.worker-/,
 +        preloadDelayMs: 9000,
-+        timings: { okMs: 600, leaveMs: 600, slowMs: 60000, retryMs: 120000 },
++        timings: { okMs: 600, leaveMs: 600, slowMs: 60000, retryMs: 120000, stallMs: 60000 },
 +      });
 +      const up = await until(
 +        async () => ((await appStarted(page)) ? true : undefined),
@@ -6760,28 +6797,77 @@ index 0000000..79464ac
 +      await page.context().close();
 +    }
 +
-+    // 8. A file that cannot be had at all: the page is reloaded once, then it stops with a message
-+    //    and a button, and it never claims that everything is OK.
++    // 8. A file that cannot be had at all is skipped, not fatal: no reload, no failure panel. The
++    //    player is let in, and the loader does not claim that everything is OK.
 +    {
 +      const page = await open(browser, {
 +        name: "missing",
 +        preload: "fail",
 +        preloadMatch: /unit-atlas\.[0-9a-f]+\.png/,
-+        timings: { fileTries: 2, maxRetries: 1, retryMs: 120000, failedRetryMs: 300 },
++        timings: { fileTries: 2, retryMs: 120000, okMs: 600, leaveMs: 600 },
 +      });
 +      let claimedOk = false;
-+      const gaveUp = await until(async () => {
++      let sawPanel = false;
++      const partial = await until(async () => {
 +        const s = await loaderState(page);
 +        if (saysOk(s)) claimedOk = true;
-+        return s?.present && s.failed ? s : undefined;
++        if (s?.failed) sawPanel = true;
++        return s?.present && /^ready/i.test(s.message) ? s : undefined;
 +      }, 40_000);
 +      check(
-+        gaveUp?.buttonShown === true,
-+        "a file that never arrives ends in the failure panel with a Reload button",
-+        gaveUp?.failTitle,
++        partial !== undefined,
++        "a file that never arrives is skipped and the loader says it is ready, with the rest loading on",
++        partial?.message,
 +      );
-+      check(!claimedOk, "...and the loader never said everything is OK");
++      check(!claimedOk, "...it never said everything is OK");
++      check(!sawPanel, "...and never showed the failure panel");
++      const gone = await until(async () => {
++        const s = await loaderState(page);
++        return s && !s.present ? true : undefined;
++      }, 15_000);
++      check(gone === true, "...and it opens onto the home page");
++      const tries = await page.evaluate(() => sessionStorage.getItem("cf-load-tries")).catch(() => null);
++      check(tries === null, "...without reloading the page", tries);
 +      await page.screenshot({ path: path.join(SHOTS, "loading-8-file-missing.png") });
++      await page.context().close();
++    }
++
++    // 9. A file that is simply too slow: once the app is up the loader waits at most waitMs, then
++    //    lets the player in, saying so, while that file is still on its way.
++    {
++      const page = await open(browser, {
++        name: "tooSlow",
++        preload: "delay",
++        preloadMatch: /Worker\.worker-/,
++        preloadDelayMs: 25_000,
++        timings: { waitMs: 3000, stallMs: 120_000, okMs: 600, leaveMs: 600, slowMs: 60000, retryMs: 120000 },
++      });
++      const up = await until(
++        async () => ((await appStarted(page)) ? true : undefined),
++        20_000,
++      );
++      check(up === true, "the app starts while one file is far too slow");
++      let claimedOk = false;
++      const partial = await until(async () => {
++        const s = await loaderState(page);
++        if (saysOk(s)) claimedOk = true;
++        return s?.present && /^ready/i.test(s.message) ? s : undefined;
++      }, 15_000);
++      check(
++        partial !== undefined && partial.pct < 100,
++        "after waitMs it says it is ready while that file is still coming (bar below 100%)",
++        [partial?.message, partial?.pct],
++      );
++      check(!claimedOk, "...without ever saying everything is OK");
++      const gone = await until(async () => {
++        const s = await loaderState(page);
++        return s && !s.present ? true : undefined;
++      }, 10_000);
++      check(gone === true, "...and it opens onto the home page");
++      const kids = await page.evaluate(
++        () => document.querySelector("play-page")?.children.length ?? 0,
++      );
++      check(kids > 0, "...with the home page ready to use", kids);
 +      await page.context().close();
 +    }
 +  } finally {
@@ -7036,10 +7122,10 @@ index 0000000..88e1fe0
 +);
 diff --git a/cloudflare/scripts/preload-list.ts b/cloudflare/scripts/preload-list.ts
 new file mode 100644
-index 0000000..3e6144c
+index 0000000..629a383
 --- /dev/null
 +++ b/cloudflare/scripts/preload-list.ts
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,76 @@
 +// The files the loading screen downloads before it lets the player in: everything the game
 +// needs to open and to start a match, except the maps.
 +//
@@ -7096,7 +7182,8 @@ index 0000000..3e6144c
 +  };
 +
 +  for (const f of list(path.join(staticDir, "assets"))) {
-+    if (CODE_EXT.test(f)) add(`assets/${f}`);
++    // The replay worker is only used to watch a replay; it loads when one is opened.
++    if (CODE_EXT.test(f) && !/^ReplayProcessor\.worker-/.test(f)) add(`assets/${f}`);
 +  }
 +  for (const dir of ASSET_DIRS) {
 +    for (const f of list(path.join(staticDir, "_assets", dir))) {
