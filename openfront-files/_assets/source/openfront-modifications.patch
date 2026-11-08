@@ -11,10 +11,10 @@ index 0000000..3a0098c
 +.build/
 diff --git a/cloudflare/README.md b/cloudflare/README.md
 new file mode 100644
-index 0000000..a717b09
+index 0000000..ab93231
 --- /dev/null
 +++ b/cloudflare/README.md
-@@ -0,0 +1,386 @@
+@@ -0,0 +1,389 @@
 +# OpenFront on Cloudflare (Workers + Durable Objects + D1)
 +
 +A port of the game relay in `src/server`, plus the web client, to Cloudflare's Free
@@ -157,7 +157,10 @@ index 0000000..a717b09
 +keeps downloading in the background. It says "Everything is OK" only when the app has started, every
 +file is here, and the browser reports the page and its fonts loaded (waiting for that at most `lateMs`,
 +3 s); if it let the player in early or skipped a file it says "Ready ✓ (the rest keeps loading while you
-+play)" instead, so it never claims more than is true. It then holds for `okMs` (0.9 s) and opens like an iris onto the home page
++play)" instead, so it never claims more than is true. After `skipMs` (8 s) a "Skip and continue" button
++appears (Persian: "رد کردن و ادامه"): the player may go in without waiting. If the app is up it opens
++at once and the downloads carry on in the background; if the app has not started there is nothing to
++show yet, so it says so and opens the moment the app starts, without waiting for the other files. It then holds for `okMs` (0.9 s) and opens like an iris onto the home page
 +(`leaveMs`, 1.4 s) while the home picture settles in (`html.cf-reveal`). "Slow" now means nothing has
 +arrived for `slowMs`, not that the load is long. `prefers-reduced-motion` gets a plain fade. All of
 +these can be shortened in tests through `window.CF_LOADING`. The files are cached by the browser (and by
@@ -5610,10 +5613,10 @@ index 0000000..39074e9
 +process.exit(failed ? 1 : 0);
 diff --git a/cloudflare/scripts/loading-screen.ts b/cloudflare/scripts/loading-screen.ts
 new file mode 100644
-index 0000000..5409b9f
+index 0000000..fdf7dc6
 --- /dev/null
 +++ b/cloudflare/scripts/loading-screen.ts
-@@ -0,0 +1,553 @@
+@@ -0,0 +1,589 @@
 +// The loading screen shown while the site opens.
 +//
 +// It is injected into the built page by build-site.ts, not into the client's own
@@ -5661,8 +5664,11 @@ index 0000000..5409b9f
 +  // for the files once the app is up; after that the player is let in and the rest keeps
 +  // downloading in the background. lateMs: everything is here but the browser has not yet said the
 +  // page and its fonts are done; stop waiting for that after lateMs.
++  // skipMs: after this long, a "skip" button appears so the player can choose to go in without
++  // waiting for the rest.
 +  var cfg = { slowMs: 12000, retryMs: 30000, maxRetries: 3, failedRetryMs: 1500, okMs: 900, leaveMs: 1400,
-+              startConcurrency: 2, concurrency: 6, stallMs: 8000, fileTries: 3, waitMs: 20000, lateMs: 3000 };
++              startConcurrency: 2, concurrency: 6, stallMs: 8000, fileTries: 3, waitMs: 20000, lateMs: 3000,
++              skipMs: 8000 };
 +  var o = window.CF_LOADING;
 +  if (o) for (var k in o) cfg[k] = o[k];
 +
@@ -5671,9 +5677,11 @@ index 0000000..5409b9f
 +    ? {
 +        loading: "در حال بارگذاری بازی…",
 +        starting: "در حال راه‌اندازی…",
-+        detail: "{pct}٪ · {a} از {b} مگابایت",
++        detail: "{pct}‏٪ · {a} از {b} مگابایت", // ‏: right-to-left mark, so the % sits where Persian puts it
 +        ok: "همه چیز اوکی شد ✓",
 +        partial: "آماده است ✓ (بقیه فایل‌ها هنگام بازی بارگذاری می‌شوند)",
++        skip: "رد کردن و ادامه",
++        skipWait: "به محض آماده شدن برنامه باز می‌شود…",
 +        slow: "هنوز در حال بارگذاری است. اتصال شما کند به نظر می‌رسد…",
 +        retrying: "بارگذاری کامل نشد. تلاش دوباره ({n} از {max})…",
 +        failTitle: "بازی بارگذاری نشد",
@@ -5687,6 +5695,8 @@ index 0000000..5409b9f
 +        detail: "{pct}% · {a} of {b} MB",
 +        ok: "Everything is OK ✓",
 +        partial: "Ready ✓ (the rest keeps loading while you play)",
++        skip: "Skip and continue",
++        skipWait: "Opening as soon as the app has started…",
 +        slow: "Still loading. Your connection seems slow…",
 +        retrying: "Loading did not finish. Trying again ({n} of {max})…",
 +        failTitle: "The game could not load",
@@ -5707,6 +5717,8 @@ index 0000000..5409b9f
 +  }
 +  document.getElementById("cf-fail-title").textContent = T.failTitle;
 +  document.getElementById("cf-fail-body").textContent = T.failBody;
++  var skipBtn = document.getElementById("cf-skip");
++  skipBtn.textContent = T.skip;
 +  var btn = document.getElementById("cf-reload");
 +  btn.textContent = T.reload;
 +  document.getElementById("cf-credit-lead").textContent = T.credit;
@@ -5761,6 +5773,7 @@ index 0000000..5409b9f
 +  var skipped = 0; // ...of which could not be had
 +  var started = 0; // download workers running
 +  var partialOpen = false; // let in before every file was here
++  var skipRequested = false; // the player pressed "skip"
 +  var appUp = false;
 +  var pageLoaded = document.readyState === "complete";
 +  var settling = false;
@@ -5790,7 +5803,7 @@ index 0000000..5409b9f
 +    lastMove = Date.now();
 +    if (slowShown && !finished && !retrying) {
 +      slowShown = false;
-+      msg.textContent = filesDone ? T.starting : T.loading;
++      if (!skipRequested) msg.textContent = filesDone ? T.starting : T.loading;
 +    }
 +    schedulePaint();
 +  }
@@ -5867,7 +5880,7 @@ index 0000000..5409b9f
 +    filesDone = true;
 +    lastMove = Date.now();
 +    paint();
-+    if (!slowShown && !retrying) msg.textContent = T.starting;
++    if (!slowShown && !retrying && !skipRequested) msg.textContent = T.starting;
 +    check();
 +  }
 +
@@ -5900,7 +5913,9 @@ index 0000000..5409b9f
 +    msg.textContent = filesDone && skipped === 0 && !partialOpen ? T.ok : T.partial;
 +    el.classList.add("cf-ok");
 +    paint();
-+    setTimeout(leave, cfg.okMs);
++    skipBtn.hidden = true;
++    // Someone who pressed "skip" has already waited long enough: no holding on the message.
++    setTimeout(leave, skipRequested ? 200 : cfg.okMs);
 +  }
 +
 +  function leave() {
@@ -5924,6 +5939,7 @@ index 0000000..5409b9f
 +    if (tries >= cfg.maxRetries) { giveUp(); return; }
 +    tries += 1;
 +    retrying = true;
++    skipBtn.hidden = true;
 +    try { sessionStorage.setItem("cf-load-tries", String(tries)); } catch (e) {}
 +    msg.textContent = T.retrying.replace("{n}", String(tries)).replace("{max}", String(cfg.maxRetries));
 +    setTimeout(function () { location.reload(); }, 1200);
@@ -5932,7 +5948,7 @@ index 0000000..5409b9f
 +  // Slow means nothing has arrived for a while, not that the whole load is long: a big first
 +  // visit on a good connection takes a while and is not slow.
 +  var watch = setInterval(function () {
-+    if (finished || retrying || slowShown) return;
++    if (finished || retrying || slowShown || skipRequested) return;
 +    if (Date.now() - lastMove > cfg.slowMs) { slowShown = true; msg.textContent = T.slow; }
 +  }, 500);
 +  later(function () { if (!appUp) retry(); }, cfg.retryMs);
@@ -5956,10 +5972,25 @@ index 0000000..5409b9f
 +    onAppUp();
 +  }
 +
++  // The "skip" button: after skipMs the player may go in without waiting for the rest. If the app is
++  // up the home page can be shown at once (the downloads carry on in the background); if it is not
++  // there is nothing to show yet, so it opens the moment the app starts, without waiting for files.
++  later(function () {
++    if (!finished && !retrying) skipBtn.hidden = false;
++  }, cfg.skipMs);
++  skipBtn.onclick = function () {
++    if (finished || skipRequested) return;
++    skipRequested = true;
++    skipBtn.disabled = true;
++    if (appUp) { partialOpen = true; ready(); }
++    else msg.textContent = T.skipWait;
++  };
++
 +  // The app is up: now more files at once, and a limit on how long the rest may take.
 +  function onAppUp() {
 +    appUp = true;
 +    lastMove = Date.now();
++    if (skipRequested) { partialOpen = true; ready(); return; } // asked to skip while it started
 +    startWorkers(cfg.concurrency);
 +    later(function () {
 +      if (finished || filesDone) return;
@@ -6063,6 +6094,13 @@ index 0000000..5409b9f
 +#cf-loading .cf-fail button{appearance:none;border:0;cursor:pointer;padding:.75rem 2rem;border-radius:.5rem;
 +  background:#1a7fe0;color:#fff;font-size:1rem;font-weight:700}
 +#cf-loading .cf-fail button:hover{background:#3592f0}
++#cf-loading .cf-skip{appearance:none;cursor:pointer;margin:1.1rem auto 0;padding:.55rem 1.5rem;
++  border-radius:.5rem;border:1px solid rgba(147,164,189,.5);background:rgba(10,16,32,.55);color:#e6edf7;
++  font-size:.95rem;font-weight:600;animation:cf-pop .45s cubic-bezier(.2,1.4,.4,1) both}
++#cf-loading .cf-skip:hover{border-color:#ffd60a;color:#ffd60a}
++#cf-loading .cf-skip:disabled{opacity:.6;cursor:default}
++#cf-loading .cf-skip:focus-visible{outline:.15rem solid #ffd60a;outline-offset:.2rem}
++#cf-loading .cf-skip[hidden],#cf-loading.cf-failed .cf-skip{display:none}
 +#cf-loading .cf-credit{position:absolute;left:50%;bottom:max(1.25rem,env(safe-area-inset-bottom));
 +  transform:translateX(-50%);display:inline-flex;align-items:center;gap:.5em;white-space:nowrap;
 +  padding:.5rem 1.1rem;border:1px solid rgba(147,164,189,.3);border-radius:999px;color:#93a4bd;
@@ -6112,6 +6150,7 @@ index 0000000..5409b9f
 +    <p class="cf-msg" id="cf-msg" role="status" aria-live="polite">Loading the game…</p>
 +    <div class="cf-bar" id="cf-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><i id="cf-bar-fill"></i></div>
 +    <p class="cf-detail" id="cf-detail" hidden></p>
++    <button class="cf-skip" id="cf-skip" type="button" hidden>Skip and continue</button>
 +    <div class="cf-fail" id="cf-fail" role="alert" hidden>
 +      <h2 id="cf-fail-title"></h2>
 +      <p id="cf-fail-body"></p>
@@ -6169,10 +6208,10 @@ index 0000000..5409b9f
 +}
 diff --git a/cloudflare/scripts/loading-smoke.ts b/cloudflare/scripts/loading-smoke.ts
 new file mode 100644
-index 0000000..a12bb20
+index 0000000..483c314
 --- /dev/null
 +++ b/cloudflare/scripts/loading-smoke.ts
-@@ -0,0 +1,713 @@
+@@ -0,0 +1,808 @@
 +// Tests the loading screen in real Chrome by making the page's own app bundle slow,
 +// broken, or broken once:
 +//
@@ -6330,6 +6369,8 @@ index 0000000..a12bb20
 +        lang: el.getAttribute("lang"),
 +        dir: el.getAttribute("dir"),
 +        message: document.getElementById("cf-msg")?.textContent ?? "",
++        skipShown: !!document.getElementById("cf-skip") && !document.getElementById("cf-skip")!.hidden,
++        skipText: document.getElementById("cf-skip")?.textContent ?? "",
 +        barShown: !!document.getElementById("cf-bar") && !document.getElementById("cf-bar")!.hidden,
 +        pct: Number(document.getElementById("cf-bar")?.getAttribute("aria-valuenow") ?? "-1"),
 +        detail: document.getElementById("cf-detail")?.textContent ?? "",
@@ -6868,6 +6909,99 @@ index 0000000..a12bb20
 +        () => document.querySelector("play-page")?.children.length ?? 0,
 +      );
 +      check(kids > 0, "...with the home page ready to use", kids);
++      await page.context().close();
++    }
++
++    // 10. The "skip" button: after skipMs it appears, and pressing it lets the player in at once
++    //     while a file is still on its way. A Persian browser, to see the Persian text.
++    {
++      const page = await open(browser, {
++        name: "skip",
++        locale: "fa-IR",
++        preload: "delay",
++        preloadMatch: /Worker\.worker-/,
++        preloadDelayMs: 25_000,
++        timings: {
++          skipMs: 2500,
++          waitMs: 120_000,
++          stallMs: 120_000,
++          okMs: 600,
++          leaveMs: 600,
++          slowMs: 60000,
++          retryMs: 120000,
++        },
++      });
++      const up = await until(
++        async () => ((await appStarted(page)) ? true : undefined),
++        20_000,
++      );
++      check(up === true, "the app starts while one needed file is still on its way");
++      const shown = await until(async () => {
++        const s = await loaderState(page);
++        return s?.present && s.skipShown ? s : undefined;
++      }, 15_000);
++      check(shown !== undefined, "after a while a skip button appears");
++      check(
++        /[؀-ۿ]/.test(shown?.skipText ?? ""),
++        "...in Persian for a Persian browser",
++        shown?.skipText,
++      );
++      const hit = await page.evaluate(() => {
++        const b = document.getElementById("cf-skip");
++        if (!b) return { onScreen: false, clickable: false };
++        const r = b.getBoundingClientRect();
++        const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
++        return {
++          onScreen: r.width > 0 && r.top >= 0 && r.bottom <= innerHeight,
++          clickable: !!e && b.contains(e),
++        };
++      });
++      check(hit.onScreen && hit.clickable, "...on screen, where a click reaches it", hit);
++      await page.screenshot({ path: path.join(SHOTS, "loading-9-skip-button-fa.png") });
++      await page.click("#cf-skip");
++      const gone = await until(async () => {
++        const s = await loaderState(page);
++        return s && !s.present ? true : undefined;
++      }, 8000);
++      check(gone === true, "pressing it opens the home page at once, without waiting for that file");
++      const kids = await page.evaluate(
++        () => document.querySelector("play-page")?.children.length ?? 0,
++      );
++      check(kids > 0, "...and the home page is ready to use", kids);
++      await page.context().close();
++    }
++
++    // 11. Skip pressed before the app has started: nothing to show yet, so it says it will open as
++    //     soon as the app starts, and then does, without waiting for the other files.
++    {
++      const page = await open(browser, {
++        name: "skipEarly",
++        scripts: "delay",
++        delayMs: 9000,
++        timings: { skipMs: 1500, retryMs: 120000, slowMs: 60000, okMs: 600, leaveMs: 600 },
++      });
++      const shown = await until(async () => {
++        const s = await loaderState(page);
++        return s?.present && s.skipShown ? s : undefined;
++      }, 8000);
++      check(shown !== undefined, "the button appears even though the app has not started");
++      check(!(await appStarted(page)), "...(it really has not)");
++      await page.click("#cf-skip");
++      const waiting = await until(async () => {
++        const s = await loaderState(page);
++        return s?.present && /as soon as/i.test(s.message) ? s : undefined;
++      }, 3000);
++      check(waiting !== undefined, "pressing it says it will open as soon as the app starts", waiting?.message);
++      check(waiting?.visible === true, "...and the loader stays until then");
++      const gone = await until(async () => {
++        const s = await loaderState(page);
++        return s && !s.present ? true : undefined;
++      }, 25_000);
++      check(gone === true, "then it opens by itself");
++      const kids = await page.evaluate(
++        () => document.querySelector("play-page")?.children.length ?? 0,
++      );
++      check(kids > 0, "...onto a working home page", kids);
 +      await page.context().close();
 +    }
 +  } finally {
