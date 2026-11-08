@@ -11,10 +11,10 @@ index 0000000..3a0098c
 +.build/
 diff --git a/cloudflare/README.md b/cloudflare/README.md
 new file mode 100644
-index 0000000..ef52f99
+index 0000000..ba5cd02
 --- /dev/null
 +++ b/cloudflare/README.md
-@@ -0,0 +1,370 @@
+@@ -0,0 +1,381 @@
 +# OpenFront on Cloudflare (Workers + Durable Objects + D1)
 +
 +A port of the game relay in `src/server`, plus the web client, to Cloudflare's Free
@@ -107,7 +107,8 @@ index 0000000..ef52f99
 +  so it paints before the stylesheet and does not wait for it (an inline script cannot run
 +  while an earlier stylesheet is still loading, so any later position gives a blank page for
 +  exactly as long as a slow connection takes). It retries by itself and then shows a message
-+  with a Reload button. `npm run smoke:loading` checks it, including a stalled stylesheet.
++  with a Reload button. `npm run smoke:loading` checks it, including a stalled stylesheet, a file
++  that is held back (it must not say OK), one that arrives half-sized and one that never arrives.
 +  The picture is a patch of hexagons that get claimed outward from the centre (yellow while a
 +  cell is being taken, blue once it is yours), a nod to the game and to the hex grid behind its
 +  home page. It is plain SVG and CSS generated at build time, so it needs no script to animate
@@ -142,10 +143,20 @@ index 0000000..ef52f99
 +held upright). They are kept small on purpose: a big file on the owner's network can freeze, and
 +nothing waits for them.
 +
-+When the app starts the loading screen says "Everything is OK" (Persian: "همه چیز اوکی شد"), holds
-+for `okMs` (2.4 s), then opens like an iris onto the home page (`leaveMs`, 1.4 s) while the home
-+picture settles in (`html.cf-reveal`). `prefers-reduced-motion` gets a plain fade. Both times can be
-+shortened in tests through `window.CF_LOADING`.
++The loading screen only says "Everything is OK" (Persian: "همه چیز اوکی شد") when it is true. It
++downloads, and counts by the bytes that really arrive, every file the game needs apart from the maps,
++and shows a bar with the percentage and megabytes (`scripts/preload-list.ts` builds the list from the
++site: every script, stylesheet and font in `assets/`, the atlases, sprites, fonts and icons, the English
++and Persian language files and the home picture for the screen shape; about 5.4 MB in 137 files; flags,
++sounds and other pictures load when used, and the maps are never waited for). A file that stalls (no data
++for `stallMs`) or ends shorter than its listed size is fetched again, up to `fileTries` times; if one
++cannot be had the page reloads, up to `maxRetries` times, then the failure panel shows. It says OK once
++the app has started, every file is here, and the browser reports the page and its fonts loaded (waiting
++for that at most `lateMs`). It then holds for `okMs` (0.9 s) and opens like an iris onto the home page
++(`leaveMs`, 1.4 s) while the home picture settles in (`html.cf-reveal`). "Slow" now means nothing has
++arrived for `slowMs`, not that the load is long. `prefers-reduced-motion` gets a plain fade. All of
++these can be shortened in tests through `window.CF_LOADING`. The files are cached by the browser (and by
++the service worker on later visits), so a return visit fills the bar at once.
 +
 +## Accounts: sign in with Google or an emailed link
 +
@@ -3958,10 +3969,10 @@ index 0000000..eb58976
 +  });
 diff --git a/cloudflare/scripts/build-site.ts b/cloudflare/scripts/build-site.ts
 new file mode 100644
-index 0000000..3b78c94
+index 0000000..3c4a68f
 --- /dev/null
 +++ b/cloudflare/scripts/build-site.ts
-@@ -0,0 +1,266 @@
+@@ -0,0 +1,268 @@
 +// Builds the web client for the Worker's static-assets binding.
 +//
 +//   npm run build:site                       # page for http://localhost:8787
@@ -3989,6 +4000,7 @@ index 0000000..3b78c94
 +import { copyArt, injectHomeArt } from "./art";
 +import { assertNoCompanyLinks, brandPage } from "./branding";
 +import { injectLoadingScreen } from "./loading-screen";
++import { buildPreload } from "./preload-list";
 +import { writeSourcePage } from "./source-page";
 +import { buildServiceWorker, injectServiceWorker } from "./resilient-assets";
 +import { assertNoThirdParty, stripThirdParty } from "./third-party";
@@ -4110,12 +4122,10 @@ index 0000000..3b78c94
 +// The pictures behind the loading screen and the home page (cloudflare/art -> static/art).
 +const art = copyArt(path.resolve(import.meta.dirname, "../art"), staticDir, cdnBase);
 +const stripped = brandPage(stripThirdParty(html, { accountApiOrigin, accounts }), siteHost);
-+const page = injectServiceWorker(
-+  injectLoadingScreen(
-+    injectHomeArt(accounts ? injectAccountUi(stripped) : stripped, art),
-+    art,
-+  ),
-+);
++const withArt = injectHomeArt(accounts ? injectAccountUi(stripped) : stripped, art);
++// What the loading screen downloads, and counts, before it lets the player in (everything but the maps).
++const preload = buildPreload(staticDir, cdnBase, withArt);
++const page = injectServiceWorker(injectLoadingScreen(withArt, art, preload));
 +assertNoThirdParty(page, { accountApiOrigin, cdnHost });
 +if (siteHost !== "localhost") assertNoCompanyLinks(page);
 +fs.writeFileSync(path.join(staticDir, "index.html"), page);
@@ -4228,6 +4238,9 @@ index 0000000..3b78c94
 +  `  site host: ${siteHost}  (instance ${instanceLetter}, ${numWorkers} worker(s))`,
 +);
 +console.log(`  files    : ${cdnBase ? `from ${cdnBase}` : "this origin"}`);
++console.log(
++  `  loading  : waits for ${preload.files.length} files (${(preload.files.reduce((n, f) => n + f[1], 0) / 1048576).toFixed(1)} MB), no maps`,
++);
 diff --git a/cloudflare/scripts/cdn-repo.ts b/cloudflare/scripts/cdn-repo.ts
 new file mode 100644
 index 0000000..b64a394
@@ -5592,10 +5605,10 @@ index 0000000..39074e9
 +process.exit(failed ? 1 : 0);
 diff --git a/cloudflare/scripts/loading-screen.ts b/cloudflare/scripts/loading-screen.ts
 new file mode 100644
-index 0000000..161c4a5
+index 0000000..316ed3e
 --- /dev/null
 +++ b/cloudflare/scripts/loading-screen.ts
-@@ -0,0 +1,325 @@
+@@ -0,0 +1,522 @@
 +// The loading screen shown while the site opens.
 +//
 +// It is injected into the built page by build-site.ts, not into the client's own
@@ -5609,9 +5622,14 @@ index 0000000..161c4a5
 +//  - shows at once: a patch of hexagonal territory being claimed cell by cell (the game is
 +//    about taking ground, and its home page backdrop is a hex grid), the name, and a status
 +//    line;
-+//  - when the app has started (the entry bundle defines <play-page>) it says "Everything is
-+//    OK", holds that for a couple of seconds, then opens like an iris onto the home page while
-+//    the home page's picture settles in (class cf-reveal on <html>, see art.ts);
++//  - downloads the files the game needs apart from the maps (window.CF_PRELOAD, listed at
++//    build time by preload-list.ts: the code, atlases, sprites, fonts, language files and the
++//    home picture) and shows a bar of the bytes that really arrived. A file that stalls or ends
++//    short is fetched again; if one cannot be had the page is reloaded, then the failure panel;
++//  - only when the app has started (the entry bundle defines <play-page>), every one of those
++//    files is here and the page's own resources and fonts have loaded, does it say "Everything
++//    is OK", and then it opens like an iris onto the home page while the home page's picture
++//    settles in (class cf-reveal on <html>, see art.ts). The maps are not waited for;
 +//  - has a backdrop picture (wide, or tall on a phone held upright) that fades in once it has
 +//    downloaded; without it the screen is plain navy and works the same;
 +//  - says so when loading is slow;
@@ -5625,11 +5643,17 @@ index 0000000..161c4a5
 +
 +import type { ArtUrls } from "./art";
 +import { insertAtHeadStart } from "./head";
++import type { Preload } from "./preload-list";
 +
 +// Timings are read from window.CF_LOADING when present, so tests can shorten them.
 +const SCRIPT_BODY = String.raw`  var el = document.getElementById("cf-loading");
 +  if (!el) return;
-+  var cfg = { slowMs: 12000, retryMs: 30000, maxRetries: 3, failedRetryMs: 1500, okMs: 2400, leaveMs: 1400 };
++  // slowMs: no byte has arrived for this long. retryMs: the app has not started by then.
++  // stallMs/fileTries: one file's download gives up after no data for stallMs, and is tried again
++  // up to fileTries times. lateMs: the app and all files are here but the browser has not yet
++  // said the page and its fonts are done; stop waiting for that after lateMs.
++  var cfg = { slowMs: 12000, retryMs: 30000, maxRetries: 3, failedRetryMs: 1500, okMs: 900, leaveMs: 1400,
++              concurrency: 6, stallMs: 12000, fileTries: 6, lateMs: 15000 };
 +  var o = window.CF_LOADING;
 +  if (o) for (var k in o) cfg[k] = o[k];
 +
@@ -5637,6 +5661,8 @@ index 0000000..161c4a5
 +  var T = fa
 +    ? {
 +        loading: "در حال بارگذاری بازی…",
++        starting: "در حال راه‌اندازی…",
++        detail: "{pct}٪ · {a} از {b} مگابایت",
 +        ok: "همه چیز اوکی شد ✓",
 +        slow: "هنوز در حال بارگذاری است. اتصال شما کند به نظر می‌رسد…",
 +        retrying: "بارگذاری کامل نشد. تلاش دوباره ({n} از {max})…",
@@ -5647,6 +5673,8 @@ index 0000000..161c4a5
 +      }
 +    : {
 +        loading: "Loading the game…",
++        starting: "Starting…",
++        detail: "{pct}% · {a} of {b} MB",
 +        ok: "Everything is OK ✓",
 +        slow: "Still loading. Your connection seems slow…",
 +        retrying: "Loading did not finish. Trying again ({n} of {max})…",
@@ -5658,7 +5686,14 @@ index 0000000..161c4a5
 +  if (fa) { el.setAttribute("lang", "fa"); el.setAttribute("dir", "rtl"); }
 +
 +  var msg = document.getElementById("cf-msg");
++  var bar = document.getElementById("cf-bar");
++  var fill = document.getElementById("cf-bar-fill");
++  var detail = document.getElementById("cf-detail");
 +  var fail = document.getElementById("cf-fail");
++  function num(n, digits) {
++    try { return n.toLocaleString(fa ? "fa-IR" : "en-US", { maximumFractionDigits: digits || 0 }); }
++    catch (e) { return String(Math.round(n * 10) / 10); }
++  }
 +  document.getElementById("cf-fail-title").textContent = T.failTitle;
 +  document.getElementById("cf-fail-body").textContent = T.failBody;
 +  var btn = document.getElementById("cf-reload");
@@ -5687,14 +5722,142 @@ index 0000000..161c4a5
 +  var tries = 0;
 +  try { tries = Number(sessionStorage.getItem("cf-load-tries") || "0") || 0; } catch (e) {}
 +  var finished = false;
++  var retrying = false;
 +  var timers = [];
 +  function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
++
++  // --- what has to be on the device before the game opens ---------------------------------
++  // The page lists the files the game needs apart from the maps (CF_PRELOAD, made at build time).
++  // They are downloaded here and counted by the bytes that really arrived, so the bar tells the
++  // truth. A file that stops (no data for stallMs) or ends short is fetched again. Once they are
++  // here the browser has them cached, so the game does not wait for them again.
++  var pre = window.CF_PRELOAD;
++  var base = pre && pre.base ? pre.base : "";
++  var list = [];
++  if (pre && pre.files && window.fetch && window.Promise) {
++    var portraitNow = window.matchMedia && matchMedia("(orientation: portrait)").matches;
++    for (var li = 0; li < pre.files.length; li++) {
++      var tag = pre.files[li][2]; // "w" / "t": a picture for wide / tall screens only
++      if ((tag === "w" && portraitNow) || (tag === "t" && !portraitNow)) continue;
++      list.push(pre.files[li]);
++    }
++  }
++  var part = [];
++  var total = 0;
++  for (var pi = 0; pi < list.length; pi++) { part.push(0); total += list[pi][1]; }
++  var filesDone = list.length === 0;
++  var filesFailed = false;
++  var appUp = false;
++  var pageLoaded = document.readyState === "complete";
++  var settling = false;
++  var lateArmed = false;
++  var slowShown = false;
++  var lastMove = Date.now();
++  var nextFile = 0;
++  var paintQueued = false;
++
++  function paint() {
++    if (!list.length) return;
++    var got = 0;
++    for (var i = 0; i < part.length; i++) got += part[i];
++    var pct = Math.floor((got * 100) / total);
++    if (!finished) pct = Math.min(pct, 99); // 100 is kept for the moment everything is OK
++    fill.style.width = pct + "%";
++    bar.setAttribute("aria-valuenow", String(pct));
++    detail.textContent = T.detail.replace("{pct}", num(pct))
++      .replace("{a}", num(got / 1048576, 1)).replace("{b}", num(total / 1048576, 1));
++  }
++  function schedulePaint() {
++    if (paintQueued) return;
++    paintQueued = true;
++    setTimeout(function () { paintQueued = false; paint(); }, 120);
++  }
++  function moved() {
++    lastMove = Date.now();
++    if (slowShown && !finished && !retrying) {
++      slowShown = false;
++      msg.textContent = filesDone ? T.starting : T.loading;
++    }
++    schedulePaint();
++  }
++  if (list.length) {
++    bar.hidden = false;
++    detail.hidden = false;
++    paint();
++  }
++
++  // One file, whole: read to the end and counted by what arrived. Short of the listed size means
++  // the connection ended early, which is a failure just like an error.
++  function fetchFile(i, attempt) {
++    var url = base + list[i][0];
++    var size = list[i][1];
++    var ctl = window.AbortController ? new AbortController() : null;
++    var timer = 0;
++    function arm() {
++      clearTimeout(timer);
++      if (ctl) timer = setTimeout(function () { ctl.abort(); }, cfg.stallMs);
++    }
++    arm();
++    return fetch(url, { signal: ctl ? ctl.signal : undefined, credentials: "omit", mode: "cors" })
++      .then(function (res) {
++        if (!res.ok || !res.body || !res.body.getReader) throw new Error("status " + res.status);
++        var reader = res.body.getReader();
++        var got = 0;
++        function read() {
++          return reader.read().then(function (r) {
++            if (r.done) return got;
++            got += r.value.length;
++            part[i] = got;
++            arm();
++            moved();
++            return read();
++          });
++        }
++        return read();
++      })
++      .then(function (got) {
++        clearTimeout(timer);
++        if (got < size) throw new Error("short");
++        part[i] = size;
++        moved();
++      })
++      .catch(function (err) {
++        clearTimeout(timer);
++        part[i] = 0;
++        if (attempt + 1 >= cfg.fileTries) throw err;
++        return new Promise(function (go) { setTimeout(go, Math.min(4000, 400 * (attempt + 1))); })
++          .then(function () { return fetchFile(i, attempt + 1); });
++      });
++  }
++
++  function takeNext() {
++    if (filesFailed || nextFile >= list.length) return Promise.resolve();
++    var i = nextFile++;
++    return fetchFile(i, 0).then(takeNext, function () {
++      if (!filesFailed) { filesFailed = true; retry(); }
++    });
++  }
++
++  // Everything is here and the app is up, and the browser says the page itself (stylesheet,
++  // pictures) has loaded and the fonts in use are ready: now, and only now, it is true.
++  function check() {
++    if (finished || settling || !appUp || !filesDone) return;
++    if (!lateArmed) {
++      lateArmed = true;
++      later(ready, cfg.lateMs); // never wait for the browser's own bookkeeping forever
++    }
++    if (!pageLoaded) return;
++    settling = true;
++    var fonts = document.fonts && document.fonts.ready;
++    if (fonts && fonts.then) fonts.then(ready, ready); else ready();
++  }
 +
 +  // The app is up: say so, hold for a moment, then open onto the home page.
 +  function ready() {
 +    if (finished) return;
 +    finished = true;
 +    for (var i = 0; i < timers.length; i++) clearTimeout(timers[i]);
++    clearInterval(watch);
 +    try { sessionStorage.removeItem("cf-load-tries"); } catch (e) {}
 +    // Loading may already have been given up on (the failure panel): bring the status line back.
 +    fail.hidden = true;
@@ -5702,6 +5865,7 @@ index 0000000..161c4a5
 +    el.classList.remove("cf-failed");
 +    msg.textContent = T.ok;
 +    el.classList.add("cf-ok");
++    paint();
 +    setTimeout(leave, cfg.okMs);
 +  }
 +
@@ -5725,13 +5889,19 @@ index 0000000..161c4a5
 +    if (finished) return;
 +    if (tries >= cfg.maxRetries) { giveUp(); return; }
 +    tries += 1;
++    retrying = true;
 +    try { sessionStorage.setItem("cf-load-tries", String(tries)); } catch (e) {}
 +    msg.textContent = T.retrying.replace("{n}", String(tries)).replace("{max}", String(cfg.maxRetries));
 +    setTimeout(function () { location.reload(); }, 1200);
 +  }
 +
-+  later(function () { if (!finished) msg.textContent = T.slow; }, cfg.slowMs);
-+  later(retry, cfg.retryMs);
++  // Slow means nothing has arrived for a while, not that the whole load is long: a big first
++  // visit on a good connection takes a while and is not slow.
++  var watch = setInterval(function () {
++    if (finished || retrying || slowShown) return;
++    if (Date.now() - lastMove > cfg.slowMs) { slowShown = true; msg.textContent = T.slow; }
++  }, 500);
++  later(function () { if (!appUp) retry(); }, cfg.retryMs);
 +
 +  // A script or stylesheet that fails outright: do not wait out the whole timeout.
 +  window.addEventListener("error", function (e) {
@@ -5741,11 +5911,30 @@ index 0000000..161c4a5
 +    }
 +  }, true);
 +
++  window.addEventListener("load", function () { pageLoaded = true; check(); });
++
 +  // The app has started once the entry bundle has defined its first component.
 +  if (window.customElements && customElements.whenDefined) {
-+    customElements.whenDefined("play-page").then(function () { setTimeout(ready, 300); });
++    customElements.whenDefined("play-page").then(function () {
++      setTimeout(function () { appUp = true; lastMove = Date.now(); check(); }, 300);
++    });
 +  } else {
-+    window.addEventListener("load", ready);
++    appUp = true;
++  }
++
++  if (list.length) {
++    var pool = [];
++    for (var w = 0; w < Math.min(cfg.concurrency, list.length); w++) pool.push(takeNext());
++    Promise.all(pool).then(function () {
++      if (filesFailed || finished) return;
++      filesDone = true;
++      lastMove = Date.now();
++      paint();
++      if (!slowShown && !retrying) msg.textContent = T.starting;
++      check();
++    });
++  } else {
++    check();
 +  }`;
 +
 +/** Where the credit link goes. */
@@ -5821,6 +6010,15 @@ index 0000000..161c4a5
 +  font-weight:900;font-size:clamp(1.5rem,5.5vw,2rem);letter-spacing:.14em;color:#fff;direction:ltr}
 +#cf-loading .cf-logo b{color:#ffd60a;font-weight:900}
 +#cf-loading .cf-msg{margin:0;font-size:.95rem;line-height:1.6;color:#93a4bd;min-height:1.6em}
++#cf-loading .cf-bar{width:min(78vw,17rem);height:.42rem;margin:.9rem auto 0;border-radius:99px;
++  background:rgba(255,255,255,.14);overflow:hidden}
++#cf-loading .cf-bar i{display:block;height:100%;width:0;border-radius:inherit;
++  background:linear-gradient(90deg,#2dd4bf,#3592f0);transition:width .3s ease-out}
++#cf-loading .cf-detail{margin:.55rem 0 0;font-size:.8rem;line-height:1.5;color:#7f93ae;
++  font-variant-numeric:tabular-nums}
++#cf-loading .cf-bar[hidden],#cf-loading .cf-detail[hidden],
++#cf-loading.cf-failed .cf-bar,#cf-loading.cf-failed .cf-detail{display:none}
++#cf-loading.cf-ok .cf-bar i{background:#3ddc97}
 +#cf-loading .cf-fail{margin-top:.25rem}
 +#cf-loading .cf-fail[hidden],#cf-loading .cf-msg[hidden]{display:none}
 +#cf-loading.cf-failed .cf-hex{display:none}
@@ -5876,6 +6074,8 @@ index 0000000..161c4a5
 +    <svg class="cf-hex" viewBox="-112 -102 224 204" aria-hidden="true" focusable="false">${hexCells()}</svg>
 +    <div class="cf-logo" role="img" aria-label="OpenFront"><b>&gt;</b>OPENFRONT<b>&lt;</b></div>
 +    <p class="cf-msg" id="cf-msg" role="status" aria-live="polite">Loading the game…</p>
++    <div class="cf-bar" id="cf-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><i id="cf-bar-fill"></i></div>
++    <p class="cf-detail" id="cf-detail" hidden></p>
 +    <div class="cf-fail" id="cf-fail" role="alert" hidden>
 +      <h2 id="cf-fail-title"></h2>
 +      <p id="cf-fail-body"></p>
@@ -5910,23 +6110,33 @@ index 0000000..161c4a5
 + * visitor gets a blank page and a spinning browser tab, and the retry logic below never
 + * starts. Before every <link>, <script src> and external request it runs at once.
 + */
-+export function injectLoadingScreen(html: string, art?: ArtUrls): string {
++export function injectLoadingScreen(
++  html: string,
++  art?: ArtUrls,
++  preload?: Preload,
++): string {
 +  if (html.includes('id="cf-loading-style"')) return html; // already injected
 +  // The backdrop's two URLs (wide, tall) are build-time constants from art.ts.
 +  const artVar = art
 +    ? `window.CF_ART=${JSON.stringify({ wide: art.loadingWide, tall: art.loadingTall })};`
 +    : "";
++  // The files to have on the device before the game opens (preload-list.ts). A "<" cannot end
++  // the script tag early: it is escaped, though no file name has one.
++  const preloadVar =
++    preload && preload.files.length > 0
++      ? `window.CF_PRELOAD=${JSON.stringify(preload).replace(/</g, "\\u003c")};`
++      : "";
 +  return insertAtHeadStart(
 +    html,
-+    `<style id="cf-loading-style">${STYLE}</style>\n<script>${artVar}${SCRIPT}</script>\n`,
++    `<style id="cf-loading-style">${STYLE}</style>\n<script>${artVar}${preloadVar}${SCRIPT}</script>\n`,
 +  );
 +}
 diff --git a/cloudflare/scripts/loading-smoke.ts b/cloudflare/scripts/loading-smoke.ts
 new file mode 100644
-index 0000000..0312ebc
+index 0000000..79464ac
 --- /dev/null
 +++ b/cloudflare/scripts/loading-smoke.ts
-@@ -0,0 +1,495 @@
+@@ -0,0 +1,663 @@
 +// Tests the loading screen in real Chrome by making the page's own app bundle slow,
 +// broken, or broken once:
 +//
@@ -5979,7 +6189,23 @@ index 0000000..0312ebc
 +  delayMs?: number;
 +  /** Hold the page's stylesheet back for this long (a stalled connection). */
 +  cssDelayMs?: number;
++  /**
++   * What to do with the files the loader itself downloads (fetch requests for /assets/* and
++   * /_assets/*) that match preloadMatch: hold them back, fail them (always, or the first time),
++   * or answer the first request with half the file.
++   */
++  preload?: "normal" | "delay" | "fail" | "failOnce" | "short";
++  preloadMatch?: RegExp;
++  preloadDelayMs?: number;
 +}
++
++/** Every request the page made, in order, for the checks that ask "was X fetched". */
++const requested: string[] = [];
++/** How many half-sized answers the "short" scenario has given. */
++let shortServed = 0;
++
++const saysOk = (s: { present?: boolean; message?: string } | undefined) =>
++  s?.present === true && /everything is ok/i.test(s.message ?? "");
 +
 +async function open(browser: Browser, s: Scenario): Promise<Page> {
 +  // The service worker would answer the very requests these scenarios hold back or fail
@@ -5996,6 +6222,8 @@ index 0000000..0312ebc
 +  }
 +  let blockedOnce = false;
 +  await context.route(/\/assets\/[^/]+\.js(\?.*)?$/, async (route) => {
++    // Only the page's own <script> tags and imports; the loader's downloads are handled below.
++    if (route.request().resourceType() === "fetch") return route.fallback();
 +    if (s.scripts === "fail") return route.abort("connectionreset");
 +    if (s.scripts === "failOnce" && !blockedOnce) {
 +      blockedOnce = true;
@@ -6010,7 +6238,37 @@ index 0000000..0312ebc
 +      return route.continue();
 +    });
 +  }
++  if (s.preload && s.preload !== "normal") {
++    const match = s.preloadMatch ?? /./;
++    let hit = 0;
++    await context.route(/\/_?assets\/[^?]+$/, async (route) => {
++      const req = route.request();
++      if (req.resourceType() !== "fetch" || !match.test(req.url())) return route.fallback();
++      hit += 1;
++      if (s.preload === "delay") {
++        await sleep(s.preloadDelayMs ?? 4000);
++        return route.continue();
++      }
++      if (s.preload === "fail") return route.abort("connectionreset");
++      if (s.preload === "failOnce") {
++        return hit === 1 ? route.abort("connectionreset") : route.continue();
++      }
++      if (s.preload === "short" && hit === 1) {
++        const res = await route.fetch();
++        const whole = await res.body();
++        const half = whole.subarray(0, Math.floor(whole.length / 2));
++        shortServed += 1;
++        return route.fulfill({
++          response: res,
++          body: half,
++          headers: { ...res.headers(), "content-length": String(half.length) },
++        });
++      }
++      return route.continue();
++    });
++  }
 +  const page = await context.newPage();
++  page.on("request", (r) => requested.push(r.url()));
 +  await page.goto(BASE, { waitUntil: "commit", timeout: 60_000 });
 +  return page;
 +}
@@ -6035,6 +6293,9 @@ index 0000000..0312ebc
 +        lang: el.getAttribute("lang"),
 +        dir: el.getAttribute("dir"),
 +        message: document.getElementById("cf-msg")?.textContent ?? "",
++        barShown: !!document.getElementById("cf-bar") && !document.getElementById("cf-bar")!.hidden,
++        pct: Number(document.getElementById("cf-bar")?.getAttribute("aria-valuenow") ?? "-1"),
++        detail: document.getElementById("cf-detail")?.textContent ?? "",
 +        failTitle:
 +          failBox && !failBox.hidden
 +            ? document.getElementById("cf-fail-title")?.textContent
@@ -6084,7 +6345,7 @@ index 0000000..0312ebc
 +      const page = await open(browser, {
 +        name: "slow",
 +        scripts: "delay",
-+        delayMs: 4500,
++        delayMs: 7000,
 +        timings: { slowMs: 2000, retryMs: 60000, okMs: 1200, leaveMs: 1400 },
 +      });
 +      const early = await until(async () => {
@@ -6140,11 +6401,14 @@ index 0000000..0312ebc
 +        [page.url(), stillHere?.present],
 +      );
 +      await popup.close();
-+      await sleep(2500);
-+      const slow = await loaderState(page);
++      // Slow means nothing has arrived for slowMs (2 s here): the files are in, the app is not.
++      const slow = await until(async () => {
++        const s = await loaderState(page);
++        return s?.present && /slow/i.test(s.message) ? s : undefined;
++      }, 4500);
 +      check(
-+        /slow/i.test(slow?.message ?? ""),
-+        "it says so when loading is slow",
++        slow !== undefined,
++        "it says so when nothing has arrived for a while",
 +        slow?.message,
 +      );
 +      await page.screenshot({ path: path.join(SHOTS, "loading-2-slow.png") });
@@ -6154,6 +6418,11 @@ index 0000000..0312ebc
 +        return s?.present && /everything is ok/i.test(s.message) ? s : undefined;
 +      }, 20_000);
 +      check(ok !== undefined, "once the app has started it says everything is OK", ok?.message);
++      check(
++        ok?.barShown === true && ok.pct === 100 && /^100|١٠٠|۱۰۰/.test(ok.detail),
++        "...with the bar full, showing 100%",
++        [ok?.barShown, ok?.pct, ok?.detail],
++      );
 +      check(
 +        ok?.visible === true,
 +        "...and that is still on screen (the loader waits before leaving)",
@@ -6406,6 +6675,115 @@ index 0000000..0312ebc
 +      check(tries === null, "and leaves no retry counter behind", tries);
 +      await page.context().close();
 +    }
++
++    // 6. What the bar is for. The app starts, but one file the game needs is still on its way:
++    //    the loader must not say everything is OK (it used to, the moment the app started), it
++    //    must show what has really arrived, and it must not wait for any map.
++    {
++      requested.length = 0;
++      const page = await open(browser, {
++        name: "heldFile",
++        preload: "delay",
++        preloadMatch: /Worker\.worker-/,
++        preloadDelayMs: 9000,
++        timings: { okMs: 600, leaveMs: 600, slowMs: 60000, retryMs: 120000 },
++      });
++      const up = await until(
++        async () => ((await appStarted(page)) ? true : undefined),
++        20_000,
++      );
++      check(up === true, "the app itself starts while one needed file is still held back");
++      await sleep(2500);
++      const mid = await loaderState(page);
++      check(
++        mid?.present === true && mid.visible === true && !saysOk(mid),
++        "...and the loader does NOT say everything is OK: it stays on screen",
++        mid?.message,
++      );
++      check(
++        mid?.barShown === true &&
++          mid.pct > 0 &&
++          mid.pct < 100 &&
++          /^\d+% · [\d.]+ of [\d.]+ MB$/.test(mid.detail),
++        "...with a bar and the real amount that has arrived",
++        [mid?.pct, mid?.detail],
++      );
++      await page.screenshot({ path: path.join(SHOTS, "loading-7-waiting-for-a-file.png") });
++      const ok = await until(async () => {
++        const s = await loaderState(page);
++        return saysOk(s) ? s : undefined;
++      }, 25_000);
++      check(ok !== undefined, "once the held file has arrived it says everything is OK", ok?.message);
++      check(ok?.pct === 100, "...with the bar full", ok?.pct);
++      const gone = await until(async () => {
++        const s = await loaderState(page);
++        return s && !s.present ? true : undefined;
++      }, 15_000);
++      check(gone === true, "...and then opens onto the home page");
++      // The home page itself reads each map's small manifest.json for the map list; what must
++      // not happen is a map's data (the .bin files) being downloaded, or one being in the list.
++      const mapData = requested.filter((u) => /\/_assets\/maps\/.*\.bin(\?|$)/.test(u));
++      check(mapData.length === 0, "no map data file was downloaded: maps are not waited for", mapData.slice(0, 3));
++      const inList = await page.evaluate(
++        () =>
++          ((window as unknown as { CF_PRELOAD?: { files: string[][] } }).CF_PRELOAD?.files ?? []).filter(
++            (f) => /maps/.test(f[0] ?? ""),
++          ).length,
++      );
++      check(inList === 0, "...and there is no map in the list the loader waits for", inList);
++      await page.context().close();
++    }
++
++    // 7. A download that ends early (the connection cut it short) is not accepted as done.
++    {
++      requested.length = 0;
++      shortServed = 0;
++      const atlas = /msdf-atlas\.[0-9a-f]+\.png/;
++      const page = await open(browser, {
++        name: "short",
++        preload: "short",
++        preloadMatch: atlas,
++        timings: { okMs: 600, leaveMs: 600 },
++      });
++      const ok = await until(async () => {
++        const s = await loaderState(page);
++        return saysOk(s) ? s : undefined;
++      }, 30_000);
++      check(shortServed === 1, "one file was answered with only half of its bytes", shortServed);
++      check(ok !== undefined, "...it was fetched again, and then the loader says everything is OK");
++      check(
++        requested.filter((u) => atlas.test(u)).length >= 2,
++        "...so that file was requested at least twice",
++      );
++      const tries = await page.evaluate(() => sessionStorage.getItem("cf-load-tries")).catch(() => null);
++      check(tries === null, "...without having to reload the page", tries);
++      await page.context().close();
++    }
++
++    // 8. A file that cannot be had at all: the page is reloaded once, then it stops with a message
++    //    and a button, and it never claims that everything is OK.
++    {
++      const page = await open(browser, {
++        name: "missing",
++        preload: "fail",
++        preloadMatch: /unit-atlas\.[0-9a-f]+\.png/,
++        timings: { fileTries: 2, maxRetries: 1, retryMs: 120000, failedRetryMs: 300 },
++      });
++      let claimedOk = false;
++      const gaveUp = await until(async () => {
++        const s = await loaderState(page);
++        if (saysOk(s)) claimedOk = true;
++        return s?.present && s.failed ? s : undefined;
++      }, 40_000);
++      check(
++        gaveUp?.buttonShown === true,
++        "a file that never arrives ends in the failure panel with a Reload button",
++        gaveUp?.failTitle,
++      );
++      check(!claimedOk, "...and the loader never said everything is OK");
++      await page.screenshot({ path: path.join(SHOTS, "loading-8-file-missing.png") });
++      await page.context().close();
++    }
 +  } finally {
 +    await browser.close();
 +    await cdn?.close();
@@ -6656,6 +7034,87 @@ index 0000000..88e1fe0
 +    `  wait for the Pages build (Settings > Pages, or poll ${cdnBase}/${PUBLISHED[0]}/...)\n` +
 +    `  then in cloudflare/:\n  CDN_BASE=${cdnBase} SITE_HOST=<host> npm run build:site -- --skip-vite`,
 +);
+diff --git a/cloudflare/scripts/preload-list.ts b/cloudflare/scripts/preload-list.ts
+new file mode 100644
+index 0000000..3e6144c
+--- /dev/null
++++ b/cloudflare/scripts/preload-list.ts
+@@ -0,0 +1,75 @@
++// The files the loading screen downloads before it lets the player in: everything the game
++// needs to open and to start a match, except the maps.
++//
++// Made from the built site, so it cannot drift from what is really there:
++//   - every script, stylesheet and font in assets/ (the game client, the modals, the simulation
++//     worker are separate chunks that load on demand, so without this the first click on Solo
++//     would wait for them);
++//   - the atlases, sprites, fonts and icons in _assets/ (what the renderer draws with);
++//   - the English and Persian language files;
++//   - the home page's picture for the screen shape in use (tagged "w" wide / "t" tall; the
++//     loading screen skips the other one).
++// Left out on purpose: the maps (a match fetches the one it plays), flags and sounds (loaded
++// one by one when used), the other pictures, and anything the page already requests itself
++// (the entry bundle and the stylesheet, which the browser's own load event covers).
++
++import fs from "node:fs";
++import path from "node:path";
++
++/** [path from the site root, size in bytes, optional "w" | "t"], and where they are served. */
++export interface Preload {
++  base: string;
++  files: Array<[string, number] | [string, number, "w" | "t"]>;
++}
++
++const CODE_EXT = /\.(js|css|woff2?)$/;
++const ASSET_DIRS = ["atlases", "sprites", "fonts", "icons"];
++const ASSET_EXT = /\.(png|webp|json|xml|ttf|woff2?|svg)$/;
++const LANGUAGES = /^(en|fa)\.[0-9a-f]+\.json$/;
++
++function list(dir: string): string[] {
++  try {
++    return fs.readdirSync(dir).sort();
++  } catch {
++    return [];
++  }
++}
++
++export function buildPreload(
++  staticDir: string,
++  cdnBase: string,
++  pageHtml: string,
++): Preload {
++  const files: Preload["files"] = [];
++  // What the page's own tags request (the entry script, the stylesheet, modulepreloads): the
++  // browser's load event covers those. Only src/href attributes count: the page also carries the
++  // whole asset manifest as data, which names files it never requests by itself.
++  const byPage = [...pageHtml.matchAll(/\b(?:src|href)=["']([^"'#?]+)/g)].map(
++    (m) => m[1],
++  );
++  const add = (rel: string, tag?: "w" | "t") => {
++    if (byPage.some((u) => u.endsWith(`/${rel}`))) return;
++    const size = fs.statSync(path.join(staticDir, rel)).size;
++    files.push(tag ? [`/${rel}`, size, tag] : [`/${rel}`, size]);
++  };
++
++  for (const f of list(path.join(staticDir, "assets"))) {
++    if (CODE_EXT.test(f)) add(`assets/${f}`);
++  }
++  for (const dir of ASSET_DIRS) {
++    for (const f of list(path.join(staticDir, "_assets", dir))) {
++      if (ASSET_EXT.test(f)) add(`_assets/${dir}/${f}`);
++    }
++  }
++  for (const f of list(path.join(staticDir, "_assets", "lang"))) {
++    if (LANGUAGES.test(f)) add(`_assets/lang/${f}`);
++  }
++  for (const f of list(path.join(staticDir, "_assets", "art"))) {
++    if (/^home-wide\./.test(f)) add(`_assets/art/${f}`, "w");
++    else if (/^home-tall\./.test(f)) add(`_assets/art/${f}`, "t");
++  }
++
++  // The biggest first: a big file that has to be tried again should not be the last one left.
++  files.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
++  return { base: cdnBase, files };
++}
 diff --git a/cloudflare/scripts/release-smoke.ts b/cloudflare/scripts/release-smoke.ts
 new file mode 100644
 index 0000000..9a999da
