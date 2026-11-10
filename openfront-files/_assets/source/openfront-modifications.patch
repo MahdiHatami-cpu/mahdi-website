@@ -13163,10 +13163,18 @@ index 0000000..a16b04d
 +  "observability": { "enabled": true },
 +}
 diff --git a/index.html b/index.html
-index 1d97661..c618c14 100644
+index 1d97661..4380d1a 100644
 --- a/index.html
 +++ b/index.html
-@@ -587,6 +587,7 @@
+@@ -401,7 +401,6 @@
+       <homepage-promos></homepage-promos>
+       <banned-modal></banned-modal>
+       <marketing-consent-toast></marketing-consent-toast>
+-      <purchase-nudge-modal></purchase-nudge-modal>
+ 
+       <!-- Main container with responsive padding -->
+       <main-layout class="contents">
+@@ -587,6 +586,7 @@
          <replay-panel></replay-panel>
        </div>
      </div>
@@ -15678,7 +15686,7 @@ new file mode 100644
 index 0000000..02ad4d9
 Binary files /dev/null and b/resources/images/terrain-detail.webp differ
 diff --git a/resources/lang/en.json b/resources/lang/en.json
-index 8e3318f..27d2602 100644
+index 8e3318f..78bd1f7 100644
 --- a/resources/lang/en.json
 +++ b/resources/lang/en.json
 @@ -814,9 +814,11 @@
@@ -15759,7 +15767,20 @@ index 8e3318f..27d2602 100644
      "surrounded": "A ring of islands around a central one, so every expansion needs a boat. One hydrogen bomb can wipe out a whole island. Can you win a public FFA after spawning in the middle?",
      "tradersdream": "Big islands against small ones: two large islands hold about half the land, while a swarm of tiny islands is made for trade."
    },
-@@ -2556,7 +2561,7 @@
+@@ -2182,12 +2187,6 @@
+     "upcoming": "Upcoming",
+     "waiting_for_players": "Waiting for players"
+   },
+-  "purchase_nudge": {
+-    "body": "Looks like you enjoy playing OpenFront! Please consider supporting us by making a purchase — any purchase makes you ad-free for life.",
+-    "close": "Close",
+-    "title": "Enjoying OpenFront?",
+-    "visit_store": "Visit store"
+-  },
+   "radial_menu": {
+     "delete_unit_description": "Click to delete the nearest unit",
+     "delete_unit_title": "Delete Unit",
+@@ -2556,7 +2555,7 @@
      "canvas_2d_no_gpu": "Canvas 2D (no GPU)",
      "charging": "Charging",
      "chromium_tip": "OpenFront runs best on Chromium-based browsers.",
@@ -15768,7 +15789,7 @@ index 8e3318f..27d2602 100644
      "device_pixel_ratio": "Device Pixel Ratio",
      "environment": "Environment",
      "gpu": "GPU",
-@@ -2889,10 +2894,7 @@
+@@ -2889,10 +2888,7 @@
    },
    "win_modal": {
      "died": "You died",
@@ -15779,7 +15800,11 @@ index 8e3318f..27d2602 100644
      "keep": "Keep Playing",
      "match_cancelled": "Match cancelled — not all players spawned",
      "nation_won": "Nation {nation} has won!",
-@@ -2907,5 +2909,10 @@
+@@ -2903,9 +2899,13 @@
+     "share": "Share",
+     "spectate": "Spectate",
+     "support_openfront": "Support OpenFront!",
+-    "territory_pattern": "Purchase a territory skin to go ad-free!",
      "you_won": "You Won!",
      "your_team": "Your team won!",
      "youtube_tutorial": "Need some help?"
@@ -20975,6 +21000,54 @@ Binary files a/resources/sprites/transportship.png and b/resources/sprites/trans
 diff --git a/resources/sprites/warship.png b/resources/sprites/warship.png
 index 4890346..f048dfc 100644
 Binary files a/resources/sprites/warship.png and b/resources/sprites/warship.png differ
+diff --git a/src/client/GameModeSelector.ts b/src/client/GameModeSelector.ts
+index 8ea205a..315f59d 100644
+--- a/src/client/GameModeSelector.ts
++++ b/src/client/GameModeSelector.ts
+@@ -66,6 +66,9 @@ const TUTORIAL_ACTION =
+ /** The Tutorial card shows beside Solo until the player has played this many games. */
+ const TUTORIAL_CARD_MAX_GAMES = 5;
+ 
++/** How often the lobby cards repaint so their countdowns keep moving. */
++const COUNTDOWN_REPAINT_MS = 1000;
++
+ /**
+  * THE REACHABILITY RULE (OPE-439). Stated once, here; every other call site
+  * in this feature points back at this comment rather than restating it.
+@@ -328,6 +331,12 @@ export class GameModeSelector extends LitElement {
+   private retryCooldownTimer: number | undefined;
+   // An update/drain signal arrived during a lobby wait; prompt on leave-lobby.
+   private updateDeferred = false;
++  // A card's countdown is worked out from the server's start time when the card
++  // renders, so it only moves when something repaints. A feed that pushes only
++  // when the list changes (this deployment's Worker does, to spare Durable
++  // Object time) would leave every card on the value of its last push; this
++  // repaint is what keeps them counting, as in DetailedGameViewModal.
++  private countdownTimer: number | undefined;
+ 
+   private lobbySocket = new PublicLobbySocket(
+     (lobbies) => this.handleLobbiesUpdate(lobbies),
+@@ -417,6 +426,11 @@ export class GameModeSelector extends LitElement {
+     // After the session seed above: a shell that already knows it has no
+     // session must not open a feed it will close on the next tick.
+     this.start();
++    // Idle while Main has the feed stopped (a game is running behind this page)
++    // or no list has arrived, so it never repaints a page nobody is looking at.
++    this.countdownTimer ??= window.setInterval(() => {
++      if (this.feedWanted && this.lobbies !== null) this.requestUpdate();
++    }, COUNTDOWN_REPAINT_MS);
+     document.addEventListener(
+       "desktop-session-state",
+       this.onDesktopSessionState,
+@@ -443,6 +457,8 @@ export class GameModeSelector extends LitElement {
+ 
+   disconnectedCallback() {
+     this.stop();
++    window.clearInterval(this.countdownTimer);
++    this.countdownTimer = undefined;
+     window.clearTimeout(this.retryCooldownTimer);
+     this.retryCoolingDown = false;
+     window.removeEventListener(
 diff --git a/src/client/GameStartingModal.ts b/src/client/GameStartingModal.ts
 index f481bd4..74fc5b9 100644
 --- a/src/client/GameStartingModal.ts
@@ -21095,6 +21168,18 @@ index 0e88139..33264aa 100644
      return {
        tabs: [
          {
+diff --git a/src/client/Main.ts b/src/client/Main.ts
+index b5cd231..7fb2357 100644
+--- a/src/client/Main.ts
++++ b/src/client/Main.ts
+@@ -167,7 +167,6 @@ import { UserSettings } from "./UserSettings";
+ import "./components/BannedModal";
+ import "./components/DesktopStatusBar";
+ import "./components/MarketingConsentToast";
+-import "./components/PurchaseNudgeModal";
+ import {
+   installCtrlWheelZoomBlocker,
+   installDoubleTapZoomBlocker,
 diff --git a/src/client/SinglePlayerModal.ts b/src/client/SinglePlayerModal.ts
 index 762b5eb..219e59d 100644
 --- a/src/client/SinglePlayerModal.ts
@@ -21369,6 +21454,121 @@ index 6ee5f42..6f1afaf 100644
        </div>
      `;
    }
+diff --git a/src/client/components/PurchaseNudgeModal.ts b/src/client/components/PurchaseNudgeModal.ts
+deleted file mode 100644
+index 0d902ea..0000000
+--- a/src/client/components/PurchaseNudgeModal.ts
++++ /dev/null
+@@ -1,109 +0,0 @@
+-import type { UserMeResponse } from "@openfront/shared/ApiSchemas";
+-import { html, LitElement, nothing } from "lit";
+-import { customElement, state } from "lit/decorators.js";
+-import { isDesktopShell } from "../DesktopShell";
+-import { gamePortal } from "../GamePortal";
+-import { getGamesPlayed, translateText } from "../Utils";
+-
+-const SHOWN_KEY = "purchaseNudgeShown";
+-const MIN_GAMES_PLAYED = 50;
+-
+-/**
+- * A one-time nudge for long-time players who haven't bought anything: shown
+- * on the home page as soon as the player's profile is known, once they are
+- * past MIN_GAMES_PLAYED games, then never again (persisted in localStorage).
+- *
+- * It reads the `userMeResponse` document event (dispatched after login / on
+- * load, `false` when logged out). Ad-free players have already purchased —
+- * seeing one marks the nudge as shown, so it stays off even if they later
+- * log out in this browser. Portals allow no purchases and the desktop
+- * shell never shows ads, so neither sees it. Closing takes an explicit click
+- * on the X (or on "Visit store"); there is no backdrop-click dismissal.
+- */
+-@customElement("purchase-nudge-modal")
+-export class PurchaseNudgeModal extends LitElement {
+-  @state() private isVisible = false;
+-
+-  private onUserMeResponse = (event: Event) => {
+-    if (this.isVisible) return;
+-    const detail = (event as CustomEvent<UserMeResponse | false>).detail;
+-    if (detail !== false && detail.player.adfree === true) {
+-      // Already purchased: latch the flag now so that a later logged-out
+-      // visit in this browser (where ad-free is unknown) can't nudge them.
+-      localStorage.setItem(SHOWN_KEY, "1");
+-      return;
+-    }
+-    if (
+-      gamePortal.isOnGamePortal() ||
+-      isDesktopShell() ||
+-      getGamesPlayed() <= MIN_GAMES_PLAYED ||
+-      localStorage.getItem(SHOWN_KEY) !== null
+-    ) {
+-      return;
+-    }
+-    localStorage.setItem(SHOWN_KEY, "1");
+-    this.isVisible = true;
+-  };
+-
+-  createRenderRoot() {
+-    return this;
+-  }
+-
+-  connectedCallback() {
+-    super.connectedCallback();
+-    document.addEventListener("userMeResponse", this.onUserMeResponse);
+-  }
+-
+-  disconnectedCallback() {
+-    super.disconnectedCallback();
+-    document.removeEventListener("userMeResponse", this.onUserMeResponse);
+-  }
+-
+-  private visitStore() {
+-    window.location.hash = "modal=store";
+-    this.dismiss();
+-  }
+-
+-  private dismiss() {
+-    this.isVisible = false;
+-  }
+-
+-  render() {
+-    if (!this.isVisible) return nothing;
+-
+-    return html`
+-      <div
+-        class="fixed inset-0 z-[10000] bg-black/50 flex items-center justify-center p-4"
+-      >
+-        <div
+-          class="bg-gray-800 text-white rounded-xl shadow-2xl max-w-md w-full p-6"
+-          role="dialog"
+-          aria-label=${translateText("purchase_nudge.title")}
+-        >
+-          <div class="flex items-start justify-between gap-4 mb-3">
+-            <h2 class="text-2xl font-bold">
+-              ${translateText("purchase_nudge.title")}
+-            </h2>
+-            <button
+-              class="shrink-0 text-white/70 hover:text-white text-2xl leading-none cursor-pointer"
+-              aria-label=${translateText("purchase_nudge.close")}
+-              @click=${this.dismiss}
+-            >
+-              ✕
+-            </button>
+-          </div>
+-          <p class="mb-6 text-gray-200">
+-            ${translateText("purchase_nudge.body")}
+-          </p>
+-          <div class="flex justify-end">
+-            <o-button
+-              variant="primary"
+-              translationKey="purchase_nudge.visit_store"
+-              @click=${this.visitStore}
+-            ></o-button>
+-          </div>
+-        </div>
+-      </div>
+-    `;
+-  }
+-}
 diff --git a/src/client/components/leaderboard/LeaderboardPlayerList.ts b/src/client/components/leaderboard/LeaderboardPlayerList.ts
 index 674136a..d992f25 100644
 --- a/src/client/components/leaderboard/LeaderboardPlayerList.ts
@@ -21446,10 +21646,19 @@ index f238d66..54ac46d 100644
      playerInfo,
      winModal,
 diff --git a/src/client/hud/layers/WinModal.ts b/src/client/hud/layers/WinModal.ts
-index ea3bcc0..8cadbd3 100644
+index ea3bcc0..f56d86c 100644
 --- a/src/client/hud/layers/WinModal.ts
 +++ b/src/client/hud/layers/WinModal.ts
-@@ -25,7 +25,6 @@ import type { GameXpPanelState } from "../../components/GameXpPanel";
+@@ -4,7 +4,7 @@ import type { AllPlayersStats, Winner } from "@openfront/engine-api/Schemas";
+ import type { GameXpEligible, Progress } from "@openfront/shared/ApiSchemas";
+ import { Pattern } from "@openfront/shared/CosmeticSchemas";
+ import { EventBus } from "@openfront/shared/EventBus";
+-import { html, LitElement, TemplateResult } from "lit";
++import { html, LitElement, nothing, TemplateResult } from "lit";
+ import { customElement, state } from "lit/decorators.js";
+ import {
+   copyToClipboard,
+@@ -25,14 +25,12 @@ import type { GameXpPanelState } from "../../components/GameXpPanel";
  import type { LegendCeremony } from "../../components/LegendCeremony";
  import "../../components/ProfileShare";
  import "../../components/PurchaseButton";
@@ -21457,7 +21666,14 @@ index ea3bcc0..8cadbd3 100644
  import { Controller } from "../../Controller";
  import {
    fetchCosmetics,
-@@ -58,7 +57,6 @@ import {
+   purchaseCosmetic,
+   resolveCosmetics,
+ } from "../../Cosmetics";
+-import { isDesktopShell } from "../../DesktopShell";
+ import { gamePortal } from "../../GamePortal";
+ import {
+   gameShareMoment,
+@@ -58,7 +56,6 @@ import {
    reconcileXp,
  } from "../../ProvisionalXpAtDeath";
  import { PlaySoundEffectEvent } from "../../sound/Sounds";
@@ -21465,7 +21681,7 @@ index ea3bcc0..8cadbd3 100644
  import { SendWinnerEvent } from "../../Transport";
  import { GameView } from "../../view";
  
-@@ -173,8 +171,6 @@ export class WinModal extends LitElement implements Controller {
+@@ -173,8 +170,6 @@ export class WinModal extends LitElement implements Controller {
  
    private _title: string;
  
@@ -21474,7 +21690,7 @@ index ea3bcc0..8cadbd3 100644
    // Override to prevent shadow DOM creation
    createRenderRoot() {
      return this;
-@@ -501,24 +497,16 @@ export class WinModal extends LitElement implements Controller {
+@@ -501,24 +496,16 @@ export class WinModal extends LitElement implements Controller {
    }
  
    innerHtml() {
@@ -21483,7 +21699,7 @@ index ea3bcc0..8cadbd3 100644
 -    const canWishlist = !steamSDK.isOnSteam();
 -
 +    // This deployment shows no store or chat-server promos: after the first
-+    // games' tutorial video the box is only the pattern shop button.
++    // games' tutorial video the box is only the skin shop, when it has skins.
      if (isInIframe()) {
 -      return canWishlist ? this.steamWishlist() : this.discordDisplay();
 +      return this.renderPatternButton();
@@ -21503,7 +21719,38 @@ index ea3bcc0..8cadbd3 100644
    }
  
    renderYoutubeTutorial() {
-@@ -620,41 +608,6 @@ export class WinModal extends LitElement implements Controller {
+@@ -552,18 +539,14 @@ export class WinModal extends LitElement implements Controller {
+   }
+ 
+   renderPatternButton() {
++    // No skins to offer (this deployment has no store, and no ads for a skin to
++    // remove): no box at all, rather than a heading over nothing.
++    if (this.patternContent === null) return nothing;
+     return html`
+       <div class="text-center mb-6 bg-black/30 p-2.5 rounded-sm">
+         <h3 class="text-xl font-semibold text-white mb-3">
+           ${translateText("win_modal.support_openfront")}
+         </h3>
+-        ${
+-          isDesktopShell()
+-            ? null
+-            : html`<p class="text-white mb-3">
+-                ${translateText("win_modal.territory_pattern")}
+-              </p>`
+-        }
+         <div
+           class="mx-auto w-full overflow-x-auto overflow-y-visible rounded-sm"
+         >
+@@ -586,7 +569,7 @@ export class WinModal extends LitElement implements Controller {
+     );
+ 
+     if (purchasable.length === 0) {
+-      this.patternContent = html``;
++      this.patternContent = null;
+       return;
+     }
+ 
+@@ -620,41 +603,6 @@ export class WinModal extends LitElement implements Controller {
      `;
    }
  
@@ -22366,6 +22613,115 @@ index eb80387..a75b6d9 100644
 +  --medal-nightmare: #8b3dff;
    --medal-custom: #2196f3;
  }
+diff --git a/tests/GameModeSelectorRestart.test.ts b/tests/GameModeSelectorRestart.test.ts
+index d73c3aa..33de1cb 100644
+--- a/tests/GameModeSelectorRestart.test.ts
++++ b/tests/GameModeSelectorRestart.test.ts
+@@ -455,3 +455,104 @@ describe("GameModeSelector lobby feed while the desktop session is gated", () =>
+     expect(selector.textContent).not.toContain("mode_selector.offline_lobbies");
+   });
+ });
++
++// A card's countdown is worked out from the server's start time when the card
++// is rendered, so it only moves when something repaints. A feed that pushes
++// only when the list changes (the Cloudflare Worker's does, to spare Durable
++// Object time) used to leave every home-page card stuck on the value of its
++// last push, while the "see all" list, which repaints on its own timer, kept
++// counting.
++describe("GameModeSelector lobby countdown", () => {
++  let selector: GameModeSelector & { updateComplete: Promise<unknown> };
++
++  beforeEach(() => {
++    vi.useFakeTimers();
++    window.BOOTSTRAP_CONFIG = {
++      gameEnv: "dev",
++      numWorkers: 1,
++      turnstileSiteKey: "",
++      jwtAudience: "test",
++      instanceId: "test",
++      gitCommit: "test",
++    };
++    ClientEnv.reset();
++    selector = document.createElement(
++      "game-mode-selector",
++    ) as GameModeSelector & { updateComplete: Promise<unknown> };
++    document.body.appendChild(selector);
++  });
++
++  afterEach(() => {
++    document.body.innerHTML = "";
++    window.BOOTSTRAP_CONFIG = undefined;
++    ClientEnv.reset();
++    vi.useRealTimers();
++  });
++
++  function pushLobby(startsInMs: number) {
++    const now = Date.now();
++    lobbiesCallbackRef.current?.({
++      serverTime: now,
++      games: {
++        ffa: [
++          {
++            gameID: "abc",
++            numClients: 1,
++            publicGameType: "ffa",
++            startsAt: now + startsInMs,
++            gameConfig: {
++              gameMap: "World",
++              gameMode: "Free For All",
++              maxPlayers: 8,
++            },
++          },
++        ],
++      },
++    } as unknown as PublicGames);
++  }
++
++  // The seconds on the card (translateText echoes keys under test).
++  const countdown = () =>
++    /(\d+)\S*duration_second_short/.exec(selector.textContent ?? "")?.[1];
++
++  it("keeps counting down between pushes from the feed", async () => {
++    pushLobby(30_500);
++    await selector.updateComplete;
++    expect(countdown()).toBe("30");
++
++    await vi.advanceTimersByTimeAsync(2000);
++    await selector.updateComplete;
++    expect(countdown()).toBe("28");
++  });
++
++  it("does not repaint while Main has the feed stopped for a game", async () => {
++    pushLobby(30_500);
++    await selector.updateComplete;
++    selector.stop();
++    const repaint = vi.spyOn(selector, "requestUpdate");
++
++    await vi.advanceTimersByTimeAsync(3000);
++
++    expect(repaint).not.toHaveBeenCalled();
++  });
++
++  it("resumes when the feed is started again", async () => {
++    pushLobby(30_500);
++    await selector.updateComplete;
++    selector.stop();
++    selector.start();
++
++    await vi.advanceTimersByTimeAsync(2000);
++    await selector.updateComplete;
++
++    expect(countdown()).toBe("28");
++  });
++
++  it("clears its timer when the element is removed", () => {
++    const withTimer = vi.getTimerCount();
++
++    selector.remove();
++
++    expect(vi.getTimerCount()).toBe(withTimer - 1);
++  });
++});
 diff --git a/tests/NationStructureBehavior.test.ts b/tests/NationStructureBehavior.test.ts
 index daa47f8..9f42228 100644
 --- a/tests/NationStructureBehavior.test.ts
@@ -22673,6 +23029,137 @@ index 21b168c..6f76d08 100644
      expect(el.querySelector("button")).toBeNull();
    });
  });
+diff --git a/tests/client/PurchaseNudgeModal.test.ts b/tests/client/PurchaseNudgeModal.test.ts
+deleted file mode 100644
+index de67386..0000000
+--- a/tests/client/PurchaseNudgeModal.test.ts
++++ /dev/null
+@@ -1,125 +0,0 @@
+-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+-
+-const { isOnCrazyGames, isDesktopShell } = vi.hoisted(() => ({
+-  isOnCrazyGames: vi.fn(() => false),
+-  isDesktopShell: vi.fn(() => false),
+-}));
+-vi.mock("../../src/client/CrazyGamesSDK", () => ({
+-  crazyGamesSDK: { isOnCrazyGames },
+-}));
+-vi.mock("../../src/client/DesktopShell", () => ({ isDesktopShell }));
+-vi.mock("../../src/client/Utils", async (importOriginal) => ({
+-  ...(await importOriginal<typeof import("../../src/client/Utils")>()),
+-  translateText: (key: string) => key,
+-}));
+-
+-import { PurchaseNudgeModal } from "../../src/client/components/PurchaseNudgeModal";
+-
+-function fireUserMe(adfree: boolean | null) {
+-  const detail = adfree === null ? false : { player: { adfree } };
+-  document.dispatchEvent(new CustomEvent("userMeResponse", { detail }));
+-}
+-
+-describe("purchase-nudge-modal", () => {
+-  let el: PurchaseNudgeModal;
+-
+-  beforeEach(async () => {
+-    localStorage.clear();
+-    localStorage.setItem("gamesPlayed", "51");
+-    isOnCrazyGames.mockReturnValue(false);
+-    isDesktopShell.mockReturnValue(false);
+-    window.location.hash = "";
+-    if (!customElements.get("purchase-nudge-modal")) {
+-      customElements.define("purchase-nudge-modal", PurchaseNudgeModal);
+-    }
+-    el = document.createElement("purchase-nudge-modal") as PurchaseNudgeModal;
+-    document.body.appendChild(el);
+-    await el.updateComplete;
+-  });
+-
+-  afterEach(() => {
+-    el.remove();
+-    vi.restoreAllMocks();
+-  });
+-
+-  async function shown(): Promise<boolean> {
+-    await el.updateComplete;
+-    return el.querySelector('[role="dialog"]') !== null;
+-  }
+-
+-  it("shows on load for a long-time non-adfree player and records it", async () => {
+-    fireUserMe(false);
+-    expect(await shown()).toBe(true);
+-    expect(localStorage.getItem("purchaseNudgeShown")).toBe("1");
+-  });
+-
+-  it("shows for logged-out players", async () => {
+-    fireUserMe(null);
+-    expect(await shown()).toBe(true);
+-  });
+-
+-  it("never shows again once it has been shown", async () => {
+-    localStorage.setItem("purchaseNudgeShown", "1");
+-    fireUserMe(false);
+-    expect(await shown()).toBe(false);
+-  });
+-
+-  it("stays hidden until the player passes 50 games", async () => {
+-    localStorage.setItem("gamesPlayed", "50");
+-    fireUserMe(false);
+-    expect(await shown()).toBe(false);
+-    expect(localStorage.getItem("purchaseNudgeShown")).toBeNull();
+-  });
+-
+-  it("stays hidden for ad-free players and latches the shown flag", async () => {
+-    fireUserMe(true);
+-    expect(await shown()).toBe(false);
+-    expect(localStorage.getItem("purchaseNudgeShown")).toBe("1");
+-  });
+-
+-  it("does not nudge an ad-free player who later logs out", async () => {
+-    fireUserMe(true);
+-    fireUserMe(null);
+-    expect(await shown()).toBe(false);
+-  });
+-
+-  it("stays hidden on CrazyGames", async () => {
+-    isOnCrazyGames.mockReturnValue(true);
+-    fireUserMe(false);
+-    expect(await shown()).toBe(false);
+-  });
+-
+-  it("stays hidden in the desktop shell, which never shows ads", async () => {
+-    isDesktopShell.mockReturnValue(true);
+-    fireUserMe(false);
+-    expect(await shown()).toBe(false);
+-    expect(localStorage.getItem("purchaseNudgeShown")).toBeNull();
+-  });
+-
+-  it("opens the store and closes", async () => {
+-    fireUserMe(false);
+-    expect(await shown()).toBe(true);
+-    (el.querySelector("o-button") as HTMLElement).click();
+-    await el.updateComplete;
+-    expect(window.location.hash).toBe("#modal=store");
+-    expect(el.querySelector('[role="dialog"]')).toBeNull();
+-  });
+-
+-  it("closes only via the X, not by clicking the backdrop", async () => {
+-    fireUserMe(false);
+-    expect(await shown()).toBe(true);
+-    (el.firstElementChild as HTMLElement).click();
+-    await el.updateComplete;
+-    expect(el.querySelector('[role="dialog"]')).not.toBeNull();
+-    (
+-      el.querySelector(
+-        'button[aria-label="purchase_nudge.close"]',
+-      ) as HTMLButtonElement
+-    ).click();
+-    await el.updateComplete;
+-    expect(el.querySelector('[role="dialog"]')).toBeNull();
+-    // A later profile refresh must not bring it back.
+-    fireUserMe(false);
+-    expect(await shown()).toBe(false);
+-  });
+-});
 diff --git a/tests/client/ZoomSlider.test.ts b/tests/client/ZoomSlider.test.ts
 new file mode 100644
 index 0000000..66d269a
@@ -22876,6 +23363,95 @@ index 40a8083..3ba5941 100644
      // Emoji table got its own initEventBus: opening the menu reaches it.
      const emojiTable = elements.get("emoji-table") as EmojiTable;
      expect(emojiTable.game).toBe(game);
+diff --git a/tests/client/graphics/layers/WinModal.test.ts b/tests/client/graphics/layers/WinModal.test.ts
+index e21003e..8acdc95 100644
+--- a/tests/client/graphics/layers/WinModal.test.ts
++++ b/tests/client/graphics/layers/WinModal.test.ts
+@@ -221,29 +221,63 @@ describe("WinModal pattern promotion", () => {
+     expect(modal.querySelectorAll(legacyContainerTag)).toHaveLength(0);
+   });
+ 
+-  it("drops the ad-free pitch in the desktop shell, which has no ads", async () => {
+-    const render = async () => {
+-      modal = document.createElement("win-modal") as WinModal;
+-      Object.assign(modal as unknown as { rand: number; isWin: boolean }, {
+-        rand: 0.75,
+-        isWin: true,
+-      });
+-      document.body.appendChild(modal);
+-      await modal.updateComplete;
+-      return modal.textContent ?? "";
+-    };
++  // This deployment has no ads, so there is nothing for a skin to remove: the
++  // "buy a skin to go ad-free" line is gone, and so is the box when it has no
++  // skins to show (a heading over nothing).
++  it("shows no support box and no ad-free pitch when there are no skins to offer", async () => {
++    vi.mocked(fetchCosmetics).mockResolvedValue(null);
++    vi.mocked(resolveCosmetics).mockReturnValue([]);
+ 
+-    expect(await render()).toContain("win_modal.territory_pattern");
+-    modal?.remove();
++    modal = document.createElement("win-modal") as WinModal;
++    Object.assign(modal as unknown as { rand: number; isWin: boolean }, {
++      rand: 0.75,
++      isWin: true,
++    });
++    document.body.appendChild(modal);
++    await modal.updateComplete;
++    await modal.loadPatternContent();
++    modal.requestUpdate();
++    await modal.updateComplete;
+ 
+-    window.openfrontDesktop = {};
+-    try {
+-      const text = await render();
+-      expect(text).toContain("win_modal.support_openfront");
+-      expect(text).not.toContain("win_modal.territory_pattern");
+-    } finally {
+-      delete window.openfrontDesktop;
+-    }
++    const text = modal.textContent ?? "";
++    expect(text).not.toContain("win_modal.support_openfront");
++    expect(text).not.toContain("win_modal.territory_pattern");
++    expect(modal.querySelectorAll("[data-win-cosmetic-promo]")).toHaveLength(0);
++  });
++
++  it("does not pitch ad-free even when it offers skins", async () => {
++    vi.mocked(fetchCosmetics).mockResolvedValue(null);
++    vi.mocked(resolveCosmetics).mockReturnValue([
++      {
++        type: "pattern",
++        cosmetic: {
++          name: "aurora",
++          pattern: "AAAAAA",
++          product: null,
++          priceHard: 120,
++          rarity: "rare",
++        } as never,
++        colorPalette: null,
++        relationship: "purchasable",
++        key: "pattern:aurora",
++      },
++    ]);
++
++    modal = document.createElement("win-modal") as WinModal;
++    Object.assign(modal as unknown as { rand: number; isWin: boolean }, {
++      rand: 0.75,
++      isWin: true,
++    });
++    document.body.appendChild(modal);
++    await modal.updateComplete;
++    await modal.loadPatternContent();
++    modal.requestUpdate();
++    await modal.updateComplete;
++
++    const text = modal.textContent ?? "";
++    expect(text).toContain("win_modal.support_openfront");
++    expect(text).not.toContain("win_modal.territory_pattern");
++    expect(modal.querySelectorAll("[data-win-cosmetic-promo]")).toHaveLength(1);
+   });
+ 
+   it("includes action styles that align [data-share-ring] with .win-action on hover", async () => {
 diff --git a/tests/client/render/gl/TerrainDetail.test.ts b/tests/client/render/gl/TerrainDetail.test.ts
 new file mode 100644
 index 0000000..b086f5b
