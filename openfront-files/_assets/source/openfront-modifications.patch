@@ -13652,7 +13652,7 @@ index 0000000..33d974a
 \ No newline at end of file
 diff --git a/map-generator/python/make_terrain_detail.py b/map-generator/python/make_terrain_detail.py
 new file mode 100644
-index 0000000..0c29d0e
+index 0000000..46ba822
 --- /dev/null
 +++ b/map-generator/python/make_terrain_detail.py
 @@ -0,0 +1,110 @@
@@ -13741,7 +13741,7 @@ index 0000000..0c29d0e
 +
 +def main():
 +    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-+    for name, default in (("sea", "1097,0,1024"), ("grass", "0,0,1024"), ("desert", "0,0,600"), ("snow", "167,0,665")):
++    for name, default in (("sea", "1097,0,1024"), ("grass", "0,0,1024"), ("desert", "516,150,640"), ("snow", "167,0,665")):
 +        p.add_argument("--" + name, required=True, help="photo for the %s layer" % name)
 +        p.add_argument("--%s-crop" % name, type=crop_arg, default=crop_arg(default), help="x,y,size (default %s)" % default)
 +    p.add_argument("--out", required=True)
@@ -15720,7 +15720,7 @@ index 5fad6fd..5d44dea 100644
 +<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5 5" width="100" height="100" shape-rendering="crispEdges"><path fill="#ffffff" d="M2 1h1v1h-1zM1 2h3v1h-3zM2 3h1v1h-1z"/><path fill="#3a3a3a" d="M2 0h1v1h-1zM1 1h1v1h-1zM3 1h1v1h-1zM0 2h1v1h-1zM4 2h1v1h-1zM1 3h1v1h-1zM3 3h1v1h-1zM2 4h1v1h-1z"/></svg>
 diff --git a/resources/images/terrain-detail.webp b/resources/images/terrain-detail.webp
 new file mode 100644
-index 0000000..02ad4d9
+index 0000000..966fec4
 Binary files /dev/null and b/resources/images/terrain-detail.webp differ
 diff --git a/resources/lang/en.json b/resources/lang/en.json
 index 8e3318f..78bd1f7 100644
