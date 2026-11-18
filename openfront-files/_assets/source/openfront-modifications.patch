@@ -13165,11 +13165,27 @@ index 0000000..a16b04d
 +
 +  "observability": { "enabled": true },
 +}
+diff --git a/example.env b/example.env
+index 71eb538..9ea683d 100644
+--- a/example.env
++++ b/example.env
+@@ -11,6 +11,11 @@ DOMAIN=your-domain.com
+ # API Key
+ API_KEY=your_api_key_here
+ 
++# Optional human admin panel. Leave both unset to disable it. Use a strong
++# password and a separate random secret of at least 32 characters.
++ADMIN_PANEL_PASSWORD=
++ADMIN_PANEL_SECRET=
++
+ # Optional CDN origin (e.g. https://cdn.example.com) prepended to hashed asset
+ # URLs from asset-manifest.json. Leave empty to serve assets from the same
+ # origin as the app. No trailing slash.
 diff --git a/index.html b/index.html
-index 1d97661..4380d1a 100644
+index 1d97661..b9487e9 100644
 --- a/index.html
 +++ b/index.html
-@@ -401,7 +401,6 @@
+@@ -401,11 +401,15 @@
        <homepage-promos></homepage-promos>
        <banned-modal></banned-modal>
        <marketing-consent-toast></marketing-consent-toast>
@@ -13177,14 +13193,91 @@ index 1d97661..4380d1a 100644
  
        <!-- Main container with responsive padding -->
        <main-layout class="contents">
-@@ -587,6 +586,7 @@
+         <play-page class="contents"></play-page>
++        <admin-modal
++          id="page-admin"
++          inline
++          class="hidden w-full h-full page-content relative z-50"
++        ></admin-modal>
+         <matchmaking-modal
+           id="page-matchmaking"
+           inline
+@@ -515,10 +519,11 @@
+     </div>
+ 
+     <!-- Game components -->
+-    <div id="app"></div>
++    <div id="app" data-game-hud></div>
+ 
+     <!-- Bottom HUD: <sm=column, sm..lg=2col (HUD left | events right), lg+=3col grid centered -->
+     <div
++      data-game-hud
+       class="fixed bottom-0 left-0 w-full z-[200] flex flex-col pointer-events-none sm:flex-row sm:items-end lg:grid lg:grid-cols-[1fr_500px_1fr] lg:items-end min-[1200px]:px-4"
+       style="
+         padding-bottom: env(safe-area-inset-bottom);
+@@ -561,17 +566,18 @@
+     </div>
+ 
+     <!-- Game modals and overlays -->
+-    <emoji-table></emoji-table>
+-    <build-menu></build-menu>
+-    <win-modal></win-modal>
+-    <onboarding-overlay></onboarding-overlay>
+-    <new-lobby-prompt></new-lobby-prompt>
++    <emoji-table data-game-hud></emoji-table>
++    <build-menu data-game-hud></build-menu>
++    <win-modal data-game-hud></win-modal>
++    <onboarding-overlay data-game-hud></onboarding-overlay>
++    <new-lobby-prompt data-game-hud></new-lobby-prompt>
+     <game-starting-modal></game-starting-modal>
+     <!-- Top HUD: below lg each piece is fixed on its own. From lg, where the
+          leaderboard opens by default, they share one row, leaderboard | card |
+          sidebar: the card is centered when it fits and shifts right or narrows
+          to clear the open leaderboard instead of covering it. -->
+     <div
++      data-game-hud
+       class="contents lg:fixed lg:top-0 lg:inset-x-0 lg:z-1000 lg:grid lg:grid-cols-[minmax(max-content,1fr)_minmax(0,max-content)_minmax(max-content,1fr)] lg:items-start lg:pointer-events-none"
+     >
+       <game-left-sidebar
+@@ -585,25 +591,27 @@
+       >
+         <game-right-sidebar></game-right-sidebar>
          <replay-panel></replay-panel>
++        <admin-game-panel></admin-game-panel>
        </div>
      </div>
-+    <zoom-slider></zoom-slider>
-     <settings-modal></settings-modal>
+-    <settings-modal></settings-modal>
++    <zoom-slider data-game-hud></zoom-slider>
++    <settings-modal data-game-hud></settings-modal>
      <!-- The in-game settings modal: the same component as #page-settings, but
           non-inline, and mounted out here because the page's copy sits in a
+          subtree that is hidden during a match. It must stay AFTER
+          #page-settings in document order: ModalRouter.routeFromHash and
+          Main.ts both resolve this component with
+          document.querySelector("user-setting"), which takes the first match. -->
+-    <user-setting id="game-settings"></user-setting>
+-    <player-panel></player-panel>
+-    <spawn-timer></spawn-timer>
+-    <immunity-timer></immunity-timer>
+-    <in-game-promo></in-game-promo>
+-    <alert-frame></alert-frame>
+-    <chat-modal></chat-modal>
+-    <multi-tab-modal></multi-tab-modal>
+-    <performance-overlay></performance-overlay>
+-    <heads-up-message></heads-up-message>
++    <user-setting id="game-settings" data-game-hud></user-setting>
++    <player-panel data-game-hud></player-panel>
++    <spawn-timer data-game-hud></spawn-timer>
++    <immunity-timer data-game-hud></immunity-timer>
++    <in-game-promo data-game-hud></in-game-promo>
++    <alert-frame data-game-hud></alert-frame>
++    <chat-modal data-game-hud></chat-modal>
++    <multi-tab-modal data-game-hud></multi-tab-modal>
++    <performance-overlay data-game-hud></performance-overlay>
++    <heads-up-message data-game-hud></heads-up-message>
+ 
+     <!-- Featured stream: direct <body> child (NOT inside the in-[.in-game]:hidden
+          home container) so the Twitch iframe is never display:none'd during a game,
 diff --git a/map-generator/assets/maps/iran/image.png b/map-generator/assets/maps/iran/image.png
 new file mode 100644
 index 0000000..66fd072
@@ -13995,6 +14088,62 @@ index 0000000..c403d46
 +        mine = {k: r[name][k] for k in ("width", "height", "num_land_tiles")}
 +        print(f"manifest {name}: {'matches' if m[name] == mine else 'DIFFERS'} {mine}")
 +    print(f"{'ALL IDENTICAL' if ok else 'MISMATCH'} in {time.time() - t0:.1f}s")
+diff --git a/openfront-pages b/openfront-pages
+new file mode 160000
+index 0000000..42458cc
+--- /dev/null
++++ b/openfront-pages
+@@ -0,0 +1 @@
++Subproject commit 42458ccb57894bfc9d0a4ef6aff4f232d5cc858b
+diff --git a/packages/engine-api/src/Schemas.ts b/packages/engine-api/src/Schemas.ts
+index 0f8de74..3c5fca2 100644
+--- a/packages/engine-api/src/Schemas.ts
++++ b/packages/engine-api/src/Schemas.ts
+@@ -46,7 +46,8 @@ export type Intent =
+   | KickPlayerIntent
+   | TogglePauseIntent
+   | UpdateGameConfigIntent
+-  | ToggleGameStartTimer;
++  | ToggleGameStartTimer
++  | AdminSetPlayerModifiersIntent;
+ 
+ export type AttackIntent = z.infer<typeof AttackIntentSchema>;
+ export type CancelAttackIntent = z.infer<typeof CancelAttackIntentSchema>;
+@@ -83,6 +84,9 @@ export type UpdateGameConfigIntent = z.infer<
+ export type ToggleGameStartTimer = z.infer<
+   typeof ToggleGameStartTimerIntentSchema
+ >;
++export type AdminSetPlayerModifiersIntent = z.infer<
++  typeof AdminSetPlayerModifiersIntentSchema
++>;
+ 
+ export type Turn = z.infer<typeof TurnSchema>;
+ export type GameConfig = z.infer<typeof GameConfigSchema>;
+@@ -567,6 +571,16 @@ export const ToggleGameStartTimerIntentSchema = z.object({
+   type: z.literal("toggle_game_start_timer"),
+ });
+ 
++// Live private-game controls for a role-authenticated human administrator.
++// The server only admits this intent from admin/root websocket clients; the
++// engine still validates the bounded values so a malformed turn cannot poison
++// the deterministic simulation.
++export const AdminSetPlayerModifiersIntentSchema = z.object({
++  type: z.literal("admin_set_player_modifiers"),
++  troopPercent: zb.float({ min: 0, max: 100 }),
++  growthMultiplier: zb.float({ min: 0.1, max: 100 }),
++});
++
+ export const IntentSchema = z.discriminatedUnion("type", [
+   AttackIntentSchema,
+   CancelAttackIntentSchema,
+@@ -593,6 +607,7 @@ export const IntentSchema = z.discriminatedUnion("type", [
+   TogglePauseIntentSchema,
+   UpdateGameConfigIntentSchema,
+   ToggleGameStartTimerIntentSchema,
++  AdminSetPlayerModifiersIntentSchema,
+ ]);
+ 
+ // StampedIntent = Intent with server-stamped clientID (used in turns and execution)
 diff --git a/packages/engine-api/src/game/GameTypes.ts b/packages/engine-api/src/game/GameTypes.ts
 index 2775de6..523e525 100644
 --- a/packages/engine-api/src/game/GameTypes.ts
@@ -14049,7 +14198,7 @@ index 427417a..3838dbc 100644
      id: "IrishSea",
      type: GameMapType.IrishSea,
 diff --git a/packages/engine-lib/src/configuration/Config.ts b/packages/engine-lib/src/configuration/Config.ts
-index aee417f..1316c8e 100644
+index aee417f..1786e18 100644
 --- a/packages/engine-lib/src/configuration/Config.ts
 +++ b/packages/engine-lib/src/configuration/Config.ts
 @@ -1,5 +1,6 @@
@@ -14080,6 +14229,21 @@ index aee417f..1316c8e 100644
    cityTroopIncrease(): number {
      return 250_000;
    }
+@@ -326,10 +341,10 @@ export class Config {
+     if (this._gameConfig.gameType === GameType.Singleplayer) {
+       return 100;
+     }
+-    if (this.isRandomSpawn()) {
+-      return 150;
+-    }
+-    return 200;
++    // Online games give every human player up to 30 seconds to choose a
++    // spawn. SpawnTimerExecution still ends the phase early once everyone has
++    // chosen, so this is a maximum rather than a mandatory delay.
++    return 300;
+   }
+ 
+   maxTroops(player: PlayerLike): number {
 @@ -377,6 +392,8 @@ export class Config {
          return maxTroops * 1; // Like humans
        case Difficulty.Impossible:
@@ -14123,6 +14287,75 @@ index 996d865..19b5ec9 100644
          default:
            assertNever(this._gameConfig.difficulty);
        }
+diff --git a/packages/engine/src/execution/AdminSetPlayerModifiersExecution.ts b/packages/engine/src/execution/AdminSetPlayerModifiersExecution.ts
+new file mode 100644
+index 0000000..00b2ad0
+--- /dev/null
++++ b/packages/engine/src/execution/AdminSetPlayerModifiersExecution.ts
+@@ -0,0 +1,63 @@
++import { zNum, zPlayerRef } from "@openfront/engine-lib/snapshot/SnapshotType";
++import { z } from "zod";
++import { Execution, Game, Player } from "../game/Game";
++import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
++import type {
++  ExecRecord,
++  SnapshotReader,
++  SnapshotWriter,
++} from "../snapshot/SnapshotContext";
++
++export class AdminSetPlayerModifiersExecution implements Execution {
++  constructor(
++    private player: Player,
++    private troopPercent: number,
++    private growthMultiplier: number,
++  ) {}
++
++  isActive(): boolean {
++    return false;
++  }
++
++  activeDuringSpawnPhase(): boolean {
++    return false;
++  }
++
++  init(game: Game): void {
++    const maxTroops = game.config().maxTroops(this.player);
++    this.player.setTroops((maxTroops * this.troopPercent) / 100);
++    this.player.setAdminTroopGrowthMultiplier(this.growthMultiplier);
++  }
++
++  tick(): void {}
++
++  snapshot(w: SnapshotWriter): ExecRecord {
++    return AdminSetPlayerModifiersExecutionSnapshot.write({
++      player: w.player(this.player),
++      troopPercent: this.troopPercent,
++      growthMultiplier: this.growthMultiplier,
++    });
++  }
++
++  restoreSnapshot(s: AdminSetPlayerModifiersState, r: SnapshotReader): void {
++    this.player = r.player(s.player);
++    this.troopPercent = s.troopPercent;
++    this.growthMultiplier = s.growthMultiplier;
++  }
++}
++
++const AdminSetPlayerModifiersStateSchema = z.object({
++  player: zPlayerRef(),
++  troopPercent: zNum(),
++  growthMultiplier: zNum(),
++});
++type AdminSetPlayerModifiersState = z.infer<
++  typeof AdminSetPlayerModifiersStateSchema
++>;
++
++export const AdminSetPlayerModifiersExecutionSnapshot = execSnapshotType({
++  name: "AdminSetPlayerModifiers",
++  version: 1,
++  schema: AdminSetPlayerModifiersStateSchema,
++  cls: () => AdminSetPlayerModifiersExecution,
++});
 diff --git a/packages/engine/src/execution/AttackExecution.ts b/packages/engine/src/execution/AttackExecution.ts
 index 1ec66c0..6c5b7b7 100644
 --- a/packages/engine/src/execution/AttackExecution.ts
@@ -14162,6 +14395,31 @@ index 35c1922..1f1bb37 100644
      const recipientMaxTroops = this.mg.config().maxTroops(this.recipient);
  
      switch (difficulty) {
+diff --git a/packages/engine/src/execution/ExecutionManager.ts b/packages/engine/src/execution/ExecutionManager.ts
+index 60c4516..a8c276d 100644
+--- a/packages/engine/src/execution/ExecutionManager.ts
++++ b/packages/engine/src/execution/ExecutionManager.ts
+@@ -7,6 +7,7 @@ import {
+ import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
+ import { simpleHash } from "@openfront/engine-lib/Util";
+ import { Execution, Game } from "../game/Game";
++import { AdminSetPlayerModifiersExecution } from "./AdminSetPlayerModifiersExecution";
+ import { AllianceExtensionExecution } from "./alliance/AllianceExtensionExecution";
+ import { AllianceRejectExecution } from "./alliance/AllianceRejectExecution";
+ import { AllianceRequestExecution } from "./alliance/AllianceRequestExecution";
+@@ -144,6 +145,12 @@ export class Executor {
+         return new MarkDisconnectedExecution(player, intent.isDisconnected);
+       case "toggle_pause":
+         return new PauseExecution(player, intent.paused);
++      case "admin_set_player_modifiers":
++        return new AdminSetPlayerModifiersExecution(
++          player,
++          intent.troopPercent,
++          intent.growthMultiplier,
++        );
+       default:
+         throw new Error(`intent type ${intent} not found`);
+     }
 diff --git a/packages/engine/src/execution/NationExecution.ts b/packages/engine/src/execution/NationExecution.ts
 index 91649ad..82145eb 100644
 --- a/packages/engine/src/execution/NationExecution.ts
@@ -14196,6 +14454,49 @@ index 91649ad..82145eb 100644
      const isHigherDifficulty =
        difficulty === Difficulty.Hard || difficulty === Difficulty.Impossible;
      const teamGame = this.mg.config().gameConfig().gameMode === GameMode.Team;
+diff --git a/packages/engine/src/execution/PlayerExecution.ts b/packages/engine/src/execution/PlayerExecution.ts
+index 3d6c5c1..da1e944 100644
+--- a/packages/engine/src/execution/PlayerExecution.ts
++++ b/packages/engine/src/execution/PlayerExecution.ts
+@@ -94,7 +94,9 @@ export class PlayerExecution implements Execution {
+       return;
+     }
+ 
+-    const troopInc = this.config.troopIncreaseRate(this.player);
++    const troopInc =
++      this.config.troopIncreaseRate(this.player) *
++      this.player.adminTroopGrowthMultiplier();
+     this.player.addTroops(troopInc);
+     const goldFromWorkers = this.config.goldAdditionRate(this.player);
+     this.player.addGold(goldFromWorkers);
+diff --git a/packages/engine/src/execution/SpawnTimerExecution.ts b/packages/engine/src/execution/SpawnTimerExecution.ts
+index d3139ed..6969a89 100644
+--- a/packages/engine/src/execution/SpawnTimerExecution.ts
++++ b/packages/engine/src/execution/SpawnTimerExecution.ts
+@@ -1,3 +1,4 @@
++import { PlayerType } from "@openfront/engine-api/game/GameTypes";
+ import { z } from "zod";
+ import { Execution, Game } from "../game/Game";
+ import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
+@@ -11,7 +12,17 @@ export class SpawnTimerExecution implements Execution {
+   }
+ 
+   tick(): void {
+-    if (this.mg.ticks() > this.mg.config().numSpawnPhaseTurns()) {
++    const humanPlayers = this.mg
++      .allPlayers()
++      .filter((player) => player.type() === PlayerType.Human);
++    const allHumansSpawned =
++      humanPlayers.length > 0 &&
++      humanPlayers.every((player) => player.hasSpawned());
++
++    if (
++      allHumansSpawned ||
++      this.mg.ticks() > this.mg.config().numSpawnPhaseTurns()
++    ) {
+       this.mg.endSpawnPhase();
+     }
+   }
 diff --git a/packages/engine/src/execution/nation/NationAllianceBehavior.ts b/packages/engine/src/execution/nation/NationAllianceBehavior.ts
 index a81a3f3..e5b30ca 100644
 --- a/packages/engine/src/execution/nation/NationAllianceBehavior.ts
@@ -15066,6 +15367,114 @@ index ec3e6bf..71d0fc9 100644
          break;
        default:
          assertNever(difficulty);
+diff --git a/packages/engine/src/game/Game.ts b/packages/engine/src/game/Game.ts
+index 2135617..e6973aa 100644
+--- a/packages/engine/src/game/Game.ts
++++ b/packages/engine/src/game/Game.ts
+@@ -381,6 +381,8 @@ export interface Player extends PlayerLike {
+   setTroops(troops: number): void;
+   addTroops(troops: number): void;
+   removeTroops(troops: number): number;
++  adminTroopGrowthMultiplier(): number;
++  setAdminTroopGrowthMultiplier(multiplier: number): void;
+ 
+   // Units
+   // Fixed-arity + array overloads instead of a rest parameter: the rest array
+diff --git a/packages/engine/src/game/PlayerImpl.ts b/packages/engine/src/game/PlayerImpl.ts
+index a0feba3..779874c 100644
+--- a/packages/engine/src/game/PlayerImpl.ts
++++ b/packages/engine/src/game/PlayerImpl.ts
+@@ -140,6 +140,7 @@ export class PlayerImpl implements Player {
+ 
+   private _gold: bigint;
+   private _troops: bigint;
++  private _adminTroopGrowthMultiplier = 1;
+ 
+   /** Cumulative ship-trade revenue (arrival credit for src + dst port owners). */
+   private _tradeGold: bigint = 0n;
+@@ -1389,6 +1390,14 @@ export class PlayerImpl implements Player {
+     return Number(toRemove);
+   }
+ 
++  adminTroopGrowthMultiplier(): number {
++    return this._adminTroopGrowthMultiplier;
++  }
++
++  setAdminTroopGrowthMultiplier(multiplier: number): void {
++    this._adminTroopGrowthMultiplier = within(multiplier, 0.1, 100);
++  }
++
+   captureUnit(unit: Unit): void {
+     if (unit.owner() === this) {
+       throw new Error(`Cannot capture unit, ${this} already owns ${unit}`);
+@@ -1849,6 +1858,7 @@ export class PlayerImpl implements Player {
+   hash(): number {
+     return (
+       simpleHash(this.id()) * (this.troops() + this.numTilesOwned()) +
++      Math.round(this._adminTroopGrowthMultiplier * 1000) +
+       this._units.reduce((acc, unit) => acc + unit.hash(), 0)
+     );
+   }
+@@ -1973,6 +1983,7 @@ export class PlayerImpl implements Player {
+       random: w.random(this._pseudo_random),
+       gold: this._gold,
+       troops: this._troops,
++      adminTroopGrowthMultiplier: this._adminTroopGrowthMultiplier,
+       tradeGold: this._tradeGold,
+       trainGold: this._trainGold,
+       piracyGold: this._piracyGold,
+@@ -2045,6 +2056,7 @@ export class PlayerImpl implements Player {
+     this._pseudo_random = r.random(s.random);
+     this._gold = s.gold;
+     this._troops = s.troops;
++    this._adminTroopGrowthMultiplier = s.adminTroopGrowthMultiplier;
+     this._tradeGold = s.tradeGold;
+     this._trainGold = s.trainGold;
+     this._piracyGold = s.piracyGold;
+@@ -2110,7 +2122,7 @@ export class PlayerImpl implements Player {
+ 
+ export const PlayerSnapshot = snapshotType({
+   name: "Player",
+-  version: 1,
++  version: 2,
+   schema: z.object({
+     smallID: zInt(),
+     info: PlayerInfoSchema,
+@@ -2120,6 +2132,7 @@ export const PlayerSnapshot = snapshotType({
+     random: zRandom(),
+     gold: z.bigint(),
+     troops: z.bigint(),
++    adminTroopGrowthMultiplier: zNum(),
+     tradeGold: z.bigint(),
+     trainGold: z.bigint(),
+     piracyGold: z.bigint(),
+@@ -2175,5 +2188,8 @@ export const PlayerSnapshot = snapshotType({
+       .optional(),
+     numUnitsConstructed: z.array(z.tuple([UnitTypeSchema, zInt()])),
+   }),
++  migrations: {
++    1: (d) => ({ ...d, adminTroopGrowthMultiplier: 1 }),
++  },
+ });
+ export type PlayerState = z.infer<typeof PlayerSnapshot.schema>;
+diff --git a/packages/engine/src/snapshot/ExecutionRegistry.ts b/packages/engine/src/snapshot/ExecutionRegistry.ts
+index aab89b2..680afcd 100644
+--- a/packages/engine/src/snapshot/ExecutionRegistry.ts
++++ b/packages/engine/src/snapshot/ExecutionRegistry.ts
+@@ -1,4 +1,5 @@
+ // Every entry is `<ClassName>Snapshot`, exported next to its class.
++import { AdminSetPlayerModifiersExecutionSnapshot } from "../execution/AdminSetPlayerModifiersExecution";
+ import { AllianceExtensionExecutionSnapshot } from "../execution/alliance/AllianceExtensionExecution";
+ import { AllianceRejectExecutionSnapshot } from "../execution/alliance/AllianceRejectExecution";
+ import { AllianceRequestExecutionSnapshot } from "../execution/alliance/AllianceRequestExecution";
+@@ -53,6 +54,7 @@ import type { ExecutionSnapshotType } from "./ExecutionSnapshot";
+  * replaced it.
+  */
+ export const EXECUTION_SNAPSHOT_TYPES = [
++  AdminSetPlayerModifiersExecutionSnapshot,
+   AllianceExtensionExecutionSnapshot,
+   AllianceRejectExecutionSnapshot,
+   AllianceRequestExecutionSnapshot,
 diff --git a/packages/shared/src/ApiSchemas.ts b/packages/shared/src/ApiSchemas.ts
 index 9537811..d28f02a 100644
 --- a/packages/shared/src/ApiSchemas.ts
@@ -15723,10 +16132,38 @@ new file mode 100644
 index 0000000..966fec4
 Binary files /dev/null and b/resources/images/terrain-detail.webp differ
 diff --git a/resources/lang/en.json b/resources/lang/en.json
-index 8e3318f..78bd1f7 100644
+index 8e3318f..a577c9a 100644
 --- a/resources/lang/en.json
 +++ b/resources/lang/en.json
-@@ -814,9 +814,11 @@
+@@ -167,6 +167,27 @@
+   "account_settings_modal": {
+     "title": "Account Settings"
+   },
++  "admin_game_panel": {
++    "applied": "Applied",
++    "apply": "Apply modifiers",
++    "growth": "Troop growth speed",
++    "private_only": "Available only in private, unlisted games. Changes affect your player immediately.",
++    "title": "Admin controls",
++    "troop_percent": "Fill troop reserve"
++  },
++  "admin_modal": {
++    "active": "Administrator mode is active",
++    "active_description": "Private and unranked games joined from this tab will use your administrator session.",
++    "description": "Enter the server administrator password. The password is sent only to your own OpenFront server and is never stored in the browser.",
++    "error_disabled": "The administrator panel is not enabled on this server.",
++    "error_invalid": "The password is incorrect or too many attempts were made. Try again shortly.",
++    "error_unavailable": "The administrator service is unavailable. Please try again.",
++    "logout": "Leave administrator mode",
++    "password": "Administrator password",
++    "sign_in": "Enter administrator mode",
++    "signing_in": "Signing in…",
++    "title": "Administrator"
++  },
+   "ban_notice": {
+     "appeal": "If you believe this is a mistake, contact us on Discord.",
+     "category": {
+@@ -814,9 +835,11 @@
      "info_smarts_hard": "Smart",
      "info_smarts_impossible": "Very smart",
      "info_smarts_medium": "Average",
@@ -15739,7 +16176,17 @@ index 8e3318f..78bd1f7 100644
    },
    "discord_user_header": {
      "avatar_alt": "Avatar"
-@@ -1045,7 +1047,6 @@
+@@ -1021,6 +1044,9 @@
+     "hvn": "Humans vs Nations",
+     "teams": "Teams"
+   },
++  "game_right_sidebar": {
++    "center_my_country": "Return to my country"
++  },
+   "game_settings": {
+     "bots": "Tribes: ",
+     "compact_map": "Compact Map",
+@@ -1045,7 +1071,6 @@
    },
    "game_starting_modal": {
      "code_license": "Code licensed under AGPL-3.0 (no warranty)",
@@ -15747,7 +16194,7 @@ index 8e3318f..78bd1f7 100644
      "title": "Game is Starting..."
    },
    "game_timer": {
-@@ -1456,6 +1457,8 @@
+@@ -1456,6 +1481,8 @@
      "win_loss_ratio": "Win/Loss",
      "win_score": "Win Score",
      "win_score_tooltip": "Weighted wins based on clan participation and match difficulty",
@@ -15756,7 +16203,7 @@ index 8e3318f..78bd1f7 100644
      "your_ranking": "Your Ranking"
    },
    "legend_ceremony": {
-@@ -1466,13 +1469,13 @@
+@@ -1466,13 +1493,13 @@
    },
    "main": {
      "account": "Account",
@@ -15772,7 +16219,7 @@ index 8e3318f..78bd1f7 100644
      "inventory": "Inventory",
      "join": "Join Lobby",
      "leaderboard": "Leaderboard",
-@@ -1487,13 +1490,13 @@
+@@ -1487,13 +1514,13 @@
      "settings": "Settings",
      "sign_in": "Sign in",
      "solo": "Solo",
@@ -15788,7 +16235,7 @@ index 8e3318f..78bd1f7 100644
    },
    "map": {
      "achiran": "Achiran",
-@@ -1567,6 +1570,7 @@
+@@ -1567,6 +1594,7 @@
      "hornofafrica": "Horn Of Africa",
      "iceland": "Iceland",
      "indiansubcontinent": "Indian Subcontinent",
@@ -15796,7 +16243,7 @@ index 8e3318f..78bd1f7 100644
      "irishsea": "Irish Sea",
      "italia": "Italia",
      "japan": "Japan",
-@@ -1683,6 +1687,7 @@
+@@ -1683,6 +1711,7 @@
      "didier": "Didier, the mascot and companion of French YouTuber Fuze, as a fantasy island, made for his OpenFront videos.",
      "didierfrance": "France reshaped into Didier, French YouTuber Fuze's mascot. Made for his OpenFront videos. Basically France, but with eyes, hands and feet.",
      "fourislands": "Four islands, one in each corner, each holding exactly a quarter of the land. A classic nuke wars map. Probably the first completely fictional map in OpenFront.",
@@ -15804,7 +16251,7 @@ index 8e3318f..78bd1f7 100644
      "surrounded": "A ring of islands around a central one, so every expansion needs a boat. One hydrogen bomb can wipe out a whole island. Can you win a public FFA after spawning in the middle?",
      "tradersdream": "Big islands against small ones: two large islands hold about half the land, while a swarm of tiny islands is made for trade."
    },
-@@ -2182,12 +2187,6 @@
+@@ -2182,12 +2211,6 @@
      "upcoming": "Upcoming",
      "waiting_for_players": "Waiting for players"
    },
@@ -15817,7 +16264,7 @@ index 8e3318f..78bd1f7 100644
    "radial_menu": {
      "delete_unit_description": "Click to delete the nearest unit",
      "delete_unit_title": "Delete Unit",
-@@ -2556,7 +2555,7 @@
+@@ -2556,7 +2579,7 @@
      "canvas_2d_no_gpu": "Canvas 2D (no GPU)",
      "charging": "Charging",
      "chromium_tip": "OpenFront runs best on Chromium-based browsers.",
@@ -15826,7 +16273,7 @@ index 8e3318f..78bd1f7 100644
      "device_pixel_ratio": "Device Pixel Ratio",
      "environment": "Environment",
      "gpu": "GPU",
-@@ -2889,10 +2888,7 @@
+@@ -2889,10 +2912,7 @@
    },
    "win_modal": {
      "died": "You died",
@@ -15837,7 +16284,7 @@ index 8e3318f..78bd1f7 100644
      "keep": "Keep Playing",
      "match_cancelled": "Match cancelled — not all players spawned",
      "nation_won": "Nation {nation} has won!",
-@@ -2903,9 +2899,13 @@
+@@ -2903,9 +2923,13 @@
      "share": "Share",
      "spectate": "Spectate",
      "support_openfront": "Support OpenFront!",
@@ -21040,6 +21487,322 @@ Binary files a/resources/sprites/transportship.png and b/resources/sprites/trans
 diff --git a/resources/sprites/warship.png b/resources/sprites/warship.png
 index 4890346..f048dfc 100644
 Binary files a/resources/sprites/warship.png and b/resources/sprites/warship.png differ
+diff --git a/src/client/AdminModal.ts b/src/client/AdminModal.ts
+new file mode 100644
+index 0000000..a91b71f
+--- /dev/null
++++ b/src/client/AdminModal.ts
+@@ -0,0 +1,114 @@
++import { html, type TemplateResult } from "lit";
++import { customElement, state } from "lit/decorators.js";
++import { adminSessionRole, clearAdminSession, loginAdmin } from "./Auth";
++import { BaseModal, type ModalConfig } from "./components/BaseModal";
++import { modalHeader } from "./components/ui/ModalHeader";
++import { translateText } from "./Utils";
++
++@customElement("admin-modal")
++export class AdminModal extends BaseModal {
++  protected routerName = "admin";
++  @state() private active = adminSessionRole() === "root";
++  @state() private submitting = false;
++  @state() private errorKey: string | null = null;
++
++  protected modalConfig(): ModalConfig {
++    return { maxWidth: "520px" };
++  }
++
++  protected renderHeaderSlot(): TemplateResult {
++    return modalHeader({
++      title: translateText("admin_modal.title"),
++      onBack: () => this.close(),
++    });
++  }
++
++  protected onOpen(): void {
++    this.active = adminSessionRole() === "root";
++    this.errorKey = null;
++  }
++
++  private async submit(event: SubmitEvent): Promise<void> {
++    event.preventDefault();
++    if (this.submitting) return;
++    const form = event.currentTarget as HTMLFormElement;
++    const password = new FormData(form).get("password");
++    if (typeof password !== "string" || password.length === 0) return;
++    this.submitting = true;
++    this.errorKey = null;
++    const result = await loginAdmin(password);
++    this.submitting = false;
++    if (result.ok) {
++      form.reset();
++      this.active = true;
++      return;
++    }
++    this.errorKey = `admin_modal.error_${result.reason}`;
++  }
++
++  private logout(): void {
++    clearAdminSession();
++    this.active = false;
++    this.errorKey = null;
++  }
++
++  protected renderBody(): TemplateResult {
++    if (this.active) {
++      return html`
++        <div class="p-6 space-y-5">
++          <div
++            class="rounded-lg border border-green-500/40 bg-green-950/30 p-4 text-green-100"
++          >
++            ${translateText("admin_modal.active")}
++          </div>
++          <p class="text-sm text-gray-300">
++            ${translateText("admin_modal.active_description")}
++          </p>
++          <button
++            type="button"
++            class="w-full rounded-lg border border-red-500/50 bg-red-950/30 px-4 py-3 font-semibold text-red-100 hover:bg-red-900/40"
++            @click=${this.logout}
++          >
++            ${translateText("admin_modal.logout")}
++          </button>
++        </div>
++      `;
++    }
++    return html`
++      <form class="p-6 space-y-5" @submit=${this.submit}>
++        <p class="text-sm text-gray-300">
++          ${translateText("admin_modal.description")}
++        </p>
++        <label class="block space-y-2">
++          <span class="text-sm font-semibold text-gray-100"
++            >${translateText("admin_modal.password")}</span
++          >
++          <input
++            name="password"
++            type="password"
++            autocomplete="current-password"
++            required
++            maxlength="1024"
++            class="w-full rounded-lg border border-white/15 bg-black/40 px-4 py-3 text-white outline-none focus:border-blue-400"
++          />
++        </label>
++        ${
++          this.errorKey
++            ? html`<p class="text-sm text-red-300" role="alert">
++                ${translateText(this.errorKey)}
++              </p>`
++            : null
++        }
++        <button
++          type="submit"
++          ?disabled=${this.submitting}
++          class="w-full rounded-lg bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-500 disabled:cursor-wait disabled:opacity-60"
++        >
++          ${translateText(
++            this.submitting ? "admin_modal.signing_in" : "admin_modal.sign_in",
++          )}
++        </button>
++      </form>
++    `;
++  }
++}
+diff --git a/src/client/Auth.ts b/src/client/Auth.ts
+index ac1f13c..56da982 100644
+--- a/src/client/Auth.ts
++++ b/src/client/Auth.ts
+@@ -16,6 +16,98 @@ import { generateCryptoRandomUUID, translateText } from "./Utils";
+ export type UserAuth = { jwt: string; claims: TokenPayload } | false;
+ 
+ const PERSISTENT_ID_KEY = "player_persistent_id";
++const ADMIN_SESSION_KEY = "openfront_admin_session";
++
++interface AdminSessionPayload {
++  sub?: string;
++  exp?: number;
++  role?: string;
++  provider?: string;
++}
++
++function readAdminSession(): {
++  token: string;
++  payload: AdminSessionPayload;
++} | null {
++  let token: string | null = null;
++  try {
++    token = sessionStorage.getItem(ADMIN_SESSION_KEY);
++  } catch {
++    return null;
++  }
++  if (!token) return null;
++  const parts = token.split(".");
++  if (parts.length !== 3 || parts[0] !== "ofadmin") return null;
++  try {
++    const encoded = parts[1].replace(/-/g, "+").replace(/_/g, "/");
++    const padded = encoded + "=".repeat((4 - (encoded.length % 4)) % 4);
++    const payload = JSON.parse(
++      new TextDecoder().decode(
++        Uint8Array.from(atob(padded), (c) => c.charCodeAt(0)),
++      ),
++    ) as AdminSessionPayload;
++    if (
++      payload.provider !== "admin-panel" ||
++      payload.role !== "root" ||
++      typeof payload.sub !== "string" ||
++      typeof payload.exp !== "number" ||
++      payload.exp <= Date.now() / 1000
++    ) {
++      sessionStorage.removeItem(ADMIN_SESSION_KEY);
++      return null;
++    }
++    return { token, payload };
++  } catch {
++    sessionStorage.removeItem(ADMIN_SESSION_KEY);
++    return null;
++  }
++}
++
++export function adminSessionRole(): "root" | null {
++  return readAdminSession() === null ? null : "root";
++}
++
++export function clearAdminSession(): void {
++  try {
++    sessionStorage.removeItem(ADMIN_SESSION_KEY);
++  } catch {
++    // A storage failure already means there is no usable persisted session.
++  }
++}
++
++export async function loginAdmin(
++  password: string,
++): Promise<
++  | { ok: true; expiresAt: number }
++  | { ok: false; reason: "disabled" | "invalid" | "unavailable" }
++> {
++  try {
++    const response = await fetch("/api/admin/login", {
++      method: "POST",
++      headers: { "content-type": "application/json" },
++      body: JSON.stringify({ password }),
++    });
++    if (response.status === 404) return { ok: false, reason: "disabled" };
++    if (response.status === 401 || response.status === 429) {
++      return { ok: false, reason: "invalid" };
++    }
++    if (!response.ok) return { ok: false, reason: "unavailable" };
++    const body = (await response.json()) as {
++      token?: unknown;
++      expiresAt?: unknown;
++    };
++    if (typeof body.token !== "string" || typeof body.expiresAt !== "number") {
++      return { ok: false, reason: "unavailable" };
++    }
++    sessionStorage.setItem(ADMIN_SESSION_KEY, body.token);
++    if (readAdminSession() === null) {
++      return { ok: false, reason: "unavailable" };
++    }
++    return { ok: true, expiresAt: body.expiresAt };
++  } catch {
++    return { ok: false, reason: "unavailable" };
++  }
++}
+ 
+ // Prefix for caching the active publicId returned by /users/@me keyed by
+ // the player's persistent ID (sub claim in JWT). Keyed by persistent ID rather
+@@ -786,6 +878,8 @@ export async function sendMagicLink(email: string): Promise<boolean> {
+ 
+ // WARNING: DO NOT EXPOSE THIS ID
+ export async function getPlayToken(): Promise<string> {
++  const admin = readAdminSession();
++  if (admin !== null) return admin.token;
+   const result = await userAuth();
+   if (result !== false) return result.jwt;
+   return getPersistentIDFromLocalStorage();
+@@ -793,6 +887,8 @@ export async function getPlayToken(): Promise<string> {
+ 
+ // WARNING: DO NOT EXPOSE THIS ID
+ export function getPersistentID(): string {
++  const admin = readAdminSession();
++  if (admin?.payload.sub) return admin.payload.sub;
+   const jwt = __jwt;
+   if (!jwt) return getPersistentIDFromLocalStorage();
+   const payload = decodeJwt(jwt);
+diff --git a/src/client/ClientGameRunner.ts b/src/client/ClientGameRunner.ts
+index a8add65..3cde6a4 100644
+--- a/src/client/ClientGameRunner.ts
++++ b/src/client/ClientGameRunner.ts
+@@ -99,7 +99,7 @@ import {
+ import { createCanvas } from "./Utils";
+ import { GameView, PlayerView } from "./view";
+ import { WebGLFrameBuilder } from "./WebGLFrameBuilder";
+-import { WorkerClient } from "./WorkerClient";
++import { preloadGameWorker, WorkerClient } from "./WorkerClient";
+ 
+ export interface LobbyConfig {
+   cosmetics: PlayerCosmeticRefs;
+@@ -122,6 +122,7 @@ export interface LobbyConfig {
+   // Host only: the play token the lobby was created under, used for the
+   // first join so the host joins as the creator (see createLobby).
+   creatorToken?: string;
++  source?: "public" | "private" | "host" | "matchmaking" | "singleplayer";
+ }
+ 
+ export interface JoinLobbyResult {
+@@ -130,6 +131,15 @@ export interface JoinLobbyResult {
+   join: Promise<void>;
+ }
+ 
++/**
++ * Fetch the chunks/assets that every game needs, without creating a game.
++ * Main calls this as soon as its lazy game module arrives; joinLobby calls it
++ * again as a safe, idempotent fallback for callers outside Main.
++ */
++export async function preloadGameRuntime(): Promise<void> {
++  await Promise.all([preloadGameWorker(), preloadAtlasData()]);
++}
++
+ export function joinLobby(
+   eventBus: EventBus,
+   lobbyConfig: LobbyConfig,
+@@ -148,6 +158,16 @@ export function joinLobby(
+   themeProvider.reset(); // fresh colour allocators for this game
+   goldRateTracker.resetAll(); // drop samples from a previous in-page game
+ 
++  // These are both required after the start message but independent of the
++  // lobby handshake and map choice. Fetch/compile them while the player is
++  // already waiting in the lobby, turning two start-time stalls into overlap.
++  void preloadGameRuntime().catch((error) =>
++    console.warn(
++      "lobby: game runtime preload failed; retrying at start",
++      error,
++    ),
++  );
++
+   const transport = new Transport(lobbyConfig, eventBus);
+ 
+   let currentGameRunner: ClientGameRunner | null = null;
+@@ -166,7 +186,10 @@ export function joinLobby(
+   // clicking through map selections changes the config every broadcast, so
+   // debouncing avoids downloading (and permanently caching) a map that was
+   // only shown transiently.
+-  const MAP_PRELOAD_DEBOUNCE_STREAK = 3;
++  const mapPreloadDebounceStreak =
++    lobbyConfig.source === "public" || lobbyConfig.source === "matchmaking"
++      ? 1
++      : 2;
+   // In-flight terrain loads keyed by `map:mapSize`, so re-requesting a map
+   // that began loading earlier (even after another map superseded it) reuses
+   // the original promise instead of starting a duplicate download/parse while
+@@ -255,7 +278,7 @@ export function joinLobby(
+           pendingPreloadKey = key;
+           pendingPreloadStreak = 1;
+         }
+-        if (pendingPreloadStreak >= MAP_PRELOAD_DEBOUNCE_STREAK) {
++        if (pendingPreloadStreak >= mapPreloadDebounceStreak) {
+           void requestTerrainLoad(gameConfig.gameMap, gameConfig.gameMapSize);
+         }
+       }
 diff --git a/src/client/GameModeSelector.ts b/src/client/GameModeSelector.ts
 index 8ea205a..315f59d 100644
 --- a/src/client/GameModeSelector.ts
@@ -21123,6 +21886,28 @@ index f481bd4..74fc5b9 100644
          <p class="text-base text-white/40 mb-4">
            ${translateText("game_starting_modal.code_license")}
          </p>
+diff --git a/src/client/KeyboardLayout.ts b/src/client/KeyboardLayout.ts
+index d41c7e2..e578c5a 100644
+--- a/src/client/KeyboardLayout.ts
++++ b/src/client/KeyboardLayout.ts
+@@ -4,7 +4,7 @@ export type KeyboardLayoutMap = Map<string, string>;
+ 
+ type KeyboardApi = {
+   getLayoutMap(): Promise<KeyboardLayoutMap>;
+-  addEventListener(event: string, callback: () => void): void;
++  addEventListener?(event: string, callback: () => void): void;
+   removeEventListener?(event: string, callback: () => void): void;
+ };
+ 
+@@ -50,7 +50,7 @@ export class KeyboardLayoutController implements ReactiveController {
+     if (!initialized) {
+       initialized = true;
+       const keyboard = getKeyboardApi();
+-      if (keyboard) {
++      if (typeof keyboard?.addEventListener === "function") {
+         listeningKeyboard = keyboard;
+         keyboard.addEventListener("layoutchange", refreshGlobalLayoutMap);
+       }
 diff --git a/src/client/LangSelector.ts b/src/client/LangSelector.ts
 index 92a8fa6..766da57 100644
 --- a/src/client/LangSelector.ts
@@ -21161,6 +21946,18 @@ index 92a8fa6..766da57 100644
        "streaming-now",
        "tutorial-panel",
      ];
+diff --git a/src/client/LazyModals.ts b/src/client/LazyModals.ts
+index a0a340b..c23622d 100644
+--- a/src/client/LazyModals.ts
++++ b/src/client/LazyModals.ts
+@@ -11,6 +11,7 @@ import { whenPageIdle } from "./WhenPageIdle";
+  * views) import each other, so a handoff between them never waits.
+  */
+ const modules: Record<string, () => Promise<unknown>> = {
++  "admin-modal": () => import("./AdminModal"),
+   "account-modal": () => import("./AccountModal"),
+   "account-settings-modal": () => import("./AccountSettingsModal"),
+   "change-username-modal": () => import("./ChangeUsernameModal"),
 diff --git a/src/client/LeaderboardConfig.ts b/src/client/LeaderboardConfig.ts
 new file mode 100644
 index 0000000..755ce01
@@ -21209,10 +22006,18 @@ index 0e88139..33264aa 100644
        tabs: [
          {
 diff --git a/src/client/Main.ts b/src/client/Main.ts
-index b5cd231..7fb2357 100644
+index b5cd231..c82e50e 100644
 --- a/src/client/Main.ts
 +++ b/src/client/Main.ts
-@@ -167,7 +167,6 @@ import { UserSettings } from "./UserSettings";
+@@ -27,6 +27,7 @@ import {
+   markNoticeSeen,
+ } from "./Api";
+ import {
++  adminSessionRole,
+   getDesktopSessionState,
+   reauthAfterPortalChange,
+   retrySteamSignIn,
+@@ -167,7 +168,6 @@ import { UserSettings } from "./UserSettings";
  import "./components/BannedModal";
  import "./components/DesktopStatusBar";
  import "./components/MarketingConsentToast";
@@ -21220,6 +22025,184 @@ index b5cd231..7fb2357 100644
  import {
    installCtrlWheelZoomBlocker,
    installDoubleTapZoomBlocker,
+@@ -307,14 +307,18 @@ export interface JoinLobbyEvent {
+  * IPC round trip is fire-and-forget: a rejection must never surface as an
+  * unhandled rejection in the client.
+  */
+-function setInGameSignal(inGame: boolean): void {
+-  document.body.classList.toggle("in-game", inGame);
++function publishInGameSignal(inGame: boolean): void {
+   setServerListInGame(inGame);
+   void desktopUpdate()
+     ?.setInGame?.(inGame)
+     ?.catch(() => {});
+ }
+ 
++function setInGameSignal(inGame: boolean): void {
++  document.body.classList.toggle("in-game", inGame);
++  publishInGameSignal(inGame);
++}
++
+ class Client {
+   private lobbyHandle: JoinLobbyResult | null = null;
+   /** The game the replay viewer is showing, once it has replaced the menu. */
+@@ -490,6 +494,13 @@ class Client {
+       tag: "store-modal",
+       pageId: "page-item-store",
+     });
++    modalRouter.register("admin", {
++      tag: "admin-modal",
++      pageId: "page-admin",
++    });
++    modalRouter.registerPath("admin", ({ pathname }) =>
++      pathname === "/admin" || pathname === "/admin/" ? {} : null,
++    );
+     modalRouter.register("settings", {
+       tag: "user-setting",
+       pageId: "page-settings",
+@@ -607,23 +618,22 @@ class Client {
+       "game-mode-selector",
+     ) as GameModeSelector;
+ 
+-    window.addEventListener("beforeunload", async () => {
++    window.addEventListener("beforeunload", () => {
+       console.log("Browser is closing");
+       if (this.replayViewerID !== null) {
+         // Leaving the replay viewer always navigates, so the same applies:
+         // nothing else clears the in-game signal it set.
+-        setInGameSignal(false);
++        publishInGameSignal(false);
+       }
+       if (this.lobbyHandle !== null) {
+         // Leaving a game by navigating away (the popstate path's
+         // `window.location.href = "/"`, or a desktop renderer reload) tears the
+-        // page down without ever running handleLeaveLobby, so nothing else
+-        // clears the in-game signal. The body class dies with the document, but
+-        // the shell's updater lives in the main process and would stay paused
+-        // forever -- no downloads, no polling -- for the rest of the session.
+-        setInGameSignal(false);
+-        this.lobbyHandle.stop(true);
+-        await gamePortal.gameplayStop();
++        // page down without ever running handleLeaveLobby. Only notify the
++        // services that outlive this document: mutating the current DOM or
++        // disposing the renderer here exposes a half-torn-down game while a
++        // slow or cancelled navigation is still showing this page.
++        publishInGameSignal(false);
++        void gamePortal.gameplayStop();
+       }
+     });
+ 
+@@ -1175,10 +1185,11 @@ class Client {
+     };
+ 
+     const leaveGame = () => {
+-      void gamePortal.gameplayStop().then(() => {
+-        // redirect to the home page
+-        window.location.href = homeHref();
+-      });
++      // Do not make navigation depend on a portal SDK promise. The unload
++      // handler reports the stopped state as a backstop, and the destination
++      // page must still load if an SDK is slow or fails.
++      void gamePortal.gameplayStop();
++      window.location.href = homeHref();
+     };
+ 
+     const onPopState = () => {
+@@ -1805,6 +1816,30 @@ class Client {
+     // above its own lobbyHandle guard precisely because this window exists.
+     this.joinInFlight = true;
+ 
++    // Everything below used to run serially: modal load, auth refresh, the
++    // game chunk, cosmetics and Turnstile. Start the independent network work
++    // together as soon as the join is accepted, then consume each result only
++    // where it is needed.
++    const isSingleplayer = lobby.source === "singleplayer";
++    const gameClientLoad = loadGameClient();
++    const turnstileTokenLoad = this.getTurnstileToken(lobby);
++    // The module itself is a small gate in front of the much larger worker
++    // and font atlas. Start those as soon as the lazy module arrives instead
++    // of waiting for auth/cosmetics and the eventual joinLobby call.
++    void gameClientLoad
++      .then((gameClient) => gameClient.preloadGameRuntime())
++      .catch(() => {});
++    if (isSingleplayer) {
++      // Refresh in the background while the local game uses the cached JWT.
++      void userAuth();
++    }
++    const authLoad = userAuth(!isSingleplayer);
++    // The awaits below own the errors. Mark early rejection handled while
++    // unrelated setup (such as a lazy lobby modal) is still in progress.
++    void gameClientLoad.catch(() => {});
++    void turnstileTokenLoad.catch(() => {});
++    void authLoad.catch(() => {});
++
+     console.log(`joining lobby ${lobby.gameID}`);
+     // Entering a lobby. Singleplayer, public lobbies and replays know their
+     // config up front; everything else is filled in by the lobby_info
+@@ -1866,17 +1901,10 @@ class Client {
+     ) {
+       this.updateJoinUrlForShare(lobby.gameID);
+     }
+-    // Singleplayer runs entirely locally, and the session is only used here
+-    // for the HUD role — the end-of-game archive establishes its own session
+-    // via getAuthHeader(). So don't let a token refresh block starting a
+-    // local game (offline on Steam it waits out the 5s ticket timeout):
+-    // read the cached JWT and refresh in the background instead.
+-    const isSingleplayer = lobby.source === "singleplayer";
+-    if (isSingleplayer) {
+-      void userAuth();
+-    }
+-    const auth = await userAuth(!isSingleplayer);
+-    const playerRole = auth !== false ? (auth.claims.role ?? null) : null;
++    const auth = await authLoad;
++    const playerRole =
++      adminSessionRole() ??
++      (auth !== false ? (auth.claims.role ?? null) : null);
+     // Ensure the one-shot Steam name-seed has settled before reading
+     // getUsername(), mirroring how getClanCheck() runs in parallel with the
+     // handshake. whenSeeded() always resolves (falling back to the generated
+@@ -1887,9 +1915,13 @@ class Client {
+     // asked for separately.
+     const resolvedName =
+       this.usernameInput?.resolvedName() ?? fallbackPlayerName();
++    const cosmeticsLoad = getPlayerCosmeticsRefs({
++      verified: resolvedName.verified,
++    });
++    void cosmeticsLoad.catch(() => {});
+     let joinLobby: typeof import("./ClientGameRunner").joinLobby;
+     try {
+-      ({ joinLobby } = await loadGameClient());
++      ({ joinLobby } = await gameClientLoad);
+     } catch (err) {
+       // The game's chunk didn't load (a network error, or a deploy that
+       // replaced it). A full page load also picks up a new deploy, unless the
+@@ -1920,12 +1952,14 @@ class Client {
+       void showInGameAlert(translateText("error_modal.game_client_failed"));
+       return;
+     }
++    const [cosmetics, turnstileToken] = await Promise.all([
++      cosmeticsLoad,
++      turnstileTokenLoad,
++    ]);
+     const newLobbyHandle = joinLobby(this.eventBus, {
+       gameID: lobby.gameID,
+-      cosmetics: await getPlayerCosmeticsRefs({
+-        verified: resolvedName.verified,
+-      }),
+-      turnstileToken: await this.getTurnstileToken(lobby),
++      cosmetics,
++      turnstileToken,
+       playerName: resolvedName.name,
+       playerClanTag: this.usernameInput?.getClanTag() ?? null,
+       clanTagCheck: this.usernameInput?.getClanCheck(),
+@@ -1941,6 +1975,7 @@ class Client {
+       snapshot: lobby.snapshot,
+       spectator: lobby.spectator,
+       creatorToken: lobby.creatorToken,
++      source: lobby.source,
+     });
+ 
+     if (this.mostRecentJoinEvent !== event.timeStamp) {
 diff --git a/src/client/SinglePlayerModal.ts b/src/client/SinglePlayerModal.ts
 index 762b5eb..219e59d 100644
 --- a/src/client/SinglePlayerModal.ts
@@ -21283,6 +22266,94 @@ index 2473632..bb62f80 100644
    private clampOffsets() {
      const canvasRect = this.boundingRect();
      const canvasWidth = canvasRect.width;
+diff --git a/src/client/Transport.ts b/src/client/Transport.ts
+index 5f9e3d7..6665447 100644
+--- a/src/client/Transport.ts
++++ b/src/client/Transport.ts
+@@ -66,6 +66,13 @@ export class PauseGameIntentEvent implements GameEvent {
+   constructor(public readonly paused: boolean) {}
+ }
+ 
++export class AdminSetPlayerModifiersEvent implements GameEvent {
++  constructor(
++    public readonly troopPercent: number,
++    public readonly growthMultiplier: number,
++  ) {}
++}
++
+ export class SendAllianceRequestIntentEvent implements GameEvent {
+   constructor(
+     public readonly requestor: PlayerView,
+@@ -345,6 +352,9 @@ export class Transport {
+     this.subscribe(BuildUnitIntentEvent, (e) => this.onBuildUnitIntent(e));
+ 
+     this.subscribe(PauseGameIntentEvent, (e) => this.onPauseGameIntent(e));
++    this.subscribe(AdminSetPlayerModifiersEvent, (e) =>
++      this.onAdminSetPlayerModifiers(e),
++    );
+     this.subscribe(SendWinnerEvent, (e) => this.onSendWinnerEvent(e));
+     this.subscribe(SendLiveStatsEvent, (e) => this.onSendLiveStatsEvent(e));
+     this.subscribe(SendPlayerReportEvent, (e) =>
+@@ -915,6 +925,14 @@ export class Transport {
+     });
+   }
+ 
++  private onAdminSetPlayerModifiers(event: AdminSetPlayerModifiersEvent) {
++    this.sendIntent({
++      type: "admin_set_player_modifiers",
++      troopPercent: event.troopPercent,
++      growthMultiplier: event.growthMultiplier,
++    });
++  }
++
+   private onSendWinnerEvent(event: SendWinnerEvent) {
+     if (this.isLocal || this.socket?.readyState === WebSocket.OPEN) {
+       this.sendMsg({
+diff --git a/src/client/WorkerClient.ts b/src/client/WorkerClient.ts
+index f954e47..25b6206 100644
+--- a/src/client/WorkerClient.ts
++++ b/src/client/WorkerClient.ts
+@@ -29,14 +29,36 @@ import {
+ import { generateID } from "@openfront/shared/SharedUtil";
+ import { terrainMapFileLoader } from "./TerrainMapFileLoader";
+ 
++type GameWorkerModule =
++  typeof import("@openfront/engine/worker/Worker.worker?worker&inline");
++
++let gameWorkerModuleLoad: Promise<GameWorkerModule> | null = null;
++
++function loadGameWorkerModule(): Promise<GameWorkerModule> {
++  if (gameWorkerModuleLoad !== null) return gameWorkerModuleLoad;
++  const load = import("@openfront/engine/worker/Worker.worker?worker&inline");
++  const cached = load.catch((error) => {
++    // A lobby prefetch is best-effort. Let game start retry after a transient
++    // network/deploy failure instead of retaining a rejected promise forever.
++    if (gameWorkerModuleLoad === cached) gameWorkerModuleLoad = null;
++    throw error;
++  });
++  gameWorkerModuleLoad = cached;
++  return gameWorkerModuleLoad;
++}
++
++/** Fetch and compile the worker chunk while the player is waiting in a lobby. */
++export async function preloadGameWorker(): Promise<void> {
++  await loadGameWorkerModule();
++}
++
+ // Inlined as a same-origin Blob (Vite's `?worker&inline`), sidestepping the
+ // cross-origin `new Worker(url)` restriction that would otherwise apply when
+ // the worker bundle is served from the CDN. The dynamic import keeps the
+-// ~700 KB base64 payload in its own chunk, fetched when a game starts,
+-// instead of inside the main bundle.
++// ~700 KB base64 payload in its own chunk, fetched when a player enters a
++// lobby instead of inside the main bundle.
+ export async function createGameWorker(): Promise<Worker> {
+-  const { default: GameWorker } =
+-    await import("@openfront/engine/worker/Worker.worker?worker&inline");
++  const { default: GameWorker } = await loadGameWorkerModule();
+   return new GameWorker();
+ }
+ 
 diff --git a/src/client/components/Difficulties.ts b/src/client/components/Difficulties.ts
 index 8e68a11..65b52cd 100644
 --- a/src/client/components/Difficulties.ts
@@ -21651,10 +22722,18 @@ index d8f02f9..fb2cbb7 100644
  
  /**
 diff --git a/src/client/hud/GameRenderer.ts b/src/client/hud/GameRenderer.ts
-index f238d66..54ac46d 100644
+index f238d66..8882c1a 100644
 --- a/src/client/hud/GameRenderer.ts
 +++ b/src/client/hud/GameRenderer.ts
-@@ -49,6 +49,7 @@ import { SpawnTimer } from "./layers/SpawnTimer";
+@@ -23,6 +23,7 @@ import { UserSettings } from "../UserSettings";
+ import { GameView } from "../view";
+ import { FrameProfiler } from "./FrameProfiler";
+ import { ActionableEvents } from "./layers/ActionableEvents";
++import { AdminGamePanel } from "./layers/AdminGamePanel";
+ import { AlertFrame } from "./layers/AlertFrame";
+ import { AttacksDisplay } from "./layers/AttacksDisplay";
+ import { BuildMenu } from "./layers/BuildMenu";
+@@ -49,6 +50,7 @@ import { SpawnTimer } from "./layers/SpawnTimer";
  import { TutorialPanel } from "./layers/TutorialPanel";
  import { UnitDisplay } from "./layers/UnitDisplay";
  import { WinModal } from "./layers/WinModal";
@@ -21662,10 +22741,21 @@ index f238d66..54ac46d 100644
  import { loadAllSprites } from "./SpriteLoader";
  
  export function createRenderer(
-@@ -189,6 +190,14 @@ export function createRenderer(
+@@ -189,6 +191,25 @@ export function createRenderer(
    gameRightSidebar.game = game;
    gameRightSidebar.eventBus = eventBus;
  
++  const adminGamePanel = document.querySelector(
++    "admin-game-panel",
++  ) as AdminGamePanel;
++  if (!(adminGamePanel instanceof AdminGamePanel)) {
++    console.error("Admin game panel not found");
++  } else {
++    adminGamePanel.game = game;
++    adminGamePanel.eventBus = eventBus;
++    adminGamePanel.playerRole = playerRole;
++  }
++
 +  // Optional: it only exists on pages that include <zoom-slider>.
 +  const zoomSlider = document.querySelector("zoom-slider");
 +  if (zoomSlider instanceof ZoomSlider) {
@@ -21677,14 +22767,363 @@ index f238d66..54ac46d 100644
    const settingsModal = document.querySelector(
      "settings-modal",
    ) as SettingsModal;
-@@ -369,6 +378,7 @@ export function createRenderer(
+@@ -369,6 +390,8 @@ export function createRenderer(
      gameLeftSidebar,
      unitDisplay,
      gameRightSidebar,
++    ...(adminGamePanel instanceof AdminGamePanel ? [adminGamePanel] : []),
 +    ...(zoomSlider instanceof ZoomSlider ? [zoomSlider] : []),
      controlPanel,
      playerInfo,
      winModal,
+@@ -427,37 +450,38 @@ export class GameRenderer {
+   tick() {
+     const nowMs = performance.now();
+     const shouldProfileTick = FrameProfiler.isEnabled();
+-
+-    const tickLayerDurations: Record<string, number> = {};
++    const tickLayerDurations: Record<string, number> | null = shouldProfileTick
++      ? {}
++      : null;
+ 
+     for (const layer of this.layers) {
+       if (!layer.tick) {
+         continue;
+       }
+ 
+-      const state = this.layerTickState.get(layer) ?? {
+-        lastTickAtMs: -Infinity,
+-      };
++      let state = this.layerTickState.get(layer);
++      if (state === undefined) {
++        state = { lastTickAtMs: -Infinity };
++        this.layerTickState.set(layer, state);
++      }
+ 
+       const intervalMs = layer.getTickIntervalMs?.() ?? 0;
+       if (intervalMs > 0 && nowMs - state.lastTickAtMs < intervalMs) {
+-        this.layerTickState.set(layer, state);
+         continue;
+       }
+ 
+       state.lastTickAtMs = nowMs;
+-      this.layerTickState.set(layer, state);
+ 
+       const tickStart = shouldProfileTick ? performance.now() : 0;
+       layer.tick();
+-      if (shouldProfileTick && tickStart !== 0) {
++      if (tickLayerDurations !== null && tickStart !== 0) {
+         const duration = performance.now() - tickStart;
+         const label = layer.constructor?.name ?? "UnknownLayer";
+         tickLayerDurations[label] = (tickLayerDurations[label] ?? 0) + duration;
+       }
+     }
+ 
+-    if (shouldProfileTick) {
++    if (tickLayerDurations !== null) {
+       this.performanceOverlay.updateTickLayerMetrics(tickLayerDurations);
+     }
+   }
+diff --git a/src/client/hud/layers/AdminGamePanel.ts b/src/client/hud/layers/AdminGamePanel.ts
+new file mode 100644
+index 0000000..f70d1ed
+--- /dev/null
++++ b/src/client/hud/layers/AdminGamePanel.ts
+@@ -0,0 +1,137 @@
++import { GameType } from "@openfront/engine-api/game/GameTypes";
++import { EventBus } from "@openfront/shared/EventBus";
++import { html, LitElement, nothing } from "lit";
++import { customElement, property, state } from "lit/decorators.js";
++import { Controller } from "../../Controller";
++import { AdminSetPlayerModifiersEvent } from "../../Transport";
++import { translateText } from "../../Utils";
++import { GameView } from "../../view";
++
++@customElement("admin-game-panel")
++export class AdminGamePanel extends LitElement implements Controller {
++  public game: GameView;
++  public eventBus: EventBus;
++  @property({ attribute: false }) playerRole: string | null = null;
++  @state() private expanded = false;
++  @state() private troopPercent = 100;
++  @state() private growthMultiplier = 1;
++  @state() private applied = false;
++
++  createRenderRoot() {
++    return this;
++  }
++
++  init(): void {
++    this.style.display = this.available() ? "block" : "none";
++  }
++
++  private available(): boolean {
++    if (this.playerRole !== "root" && this.playerRole !== "admin") return false;
++    if (!this.game || this.game.config().isReplay()) return false;
++    return (
++      this.game.config().gameConfig().gameType === GameType.Private &&
++      !this.game.config().listed
++    );
++  }
++
++  private numberFrom(
++    event: Event,
++    min: number,
++    max: number,
++    fallback: number,
++  ): number {
++    const value = Number((event.currentTarget as HTMLInputElement).value);
++    return Number.isFinite(value)
++      ? Math.min(max, Math.max(min, value))
++      : fallback;
++  }
++
++  private apply(): void {
++    this.eventBus.emit(
++      new AdminSetPlayerModifiersEvent(
++        this.troopPercent,
++        this.growthMultiplier,
++      ),
++    );
++    this.applied = true;
++    window.setTimeout(() => {
++      this.applied = false;
++    }, 1800);
++  }
++
++  render() {
++    if (!this.available()) return nothing;
++    return html`
++      <div
++        class="pointer-events-auto mr-2 w-72 overflow-hidden rounded-lg border border-amber-400/40 bg-gray-950/95 text-white shadow-xl backdrop-blur-sm"
++      >
++        <button
++          type="button"
++          class="flex w-full items-center justify-between px-4 py-3 text-sm font-bold text-amber-200 hover:bg-white/5"
++          @click=${() => (this.expanded = !this.expanded)}
++        >
++          <span>${translateText("admin_game_panel.title")}</span>
++          <span aria-hidden="true">${this.expanded ? "−" : "+"}</span>
++        </button>
++        ${
++          this.expanded
++            ? html`
++                <div class="space-y-4 border-t border-white/10 p-4">
++                  <label class="block space-y-2">
++                    <span class="flex justify-between text-xs text-gray-300">
++                      <span
++                        >${translateText("admin_game_panel.troop_percent")}</span
++                      >
++                      <span>${this.troopPercent}%</span>
++                    </span>
++                    <input
++                      class="w-full accent-amber-400"
++                      type="range"
++                      min="0"
++                      max="100"
++                      step="1"
++                      .value=${String(this.troopPercent)}
++                      @input=${(e: Event) => {
++                        this.troopPercent = this.numberFrom(e, 0, 100, 100);
++                      }}
++                    />
++                  </label>
++                  <label class="block space-y-2">
++                    <span class="flex justify-between text-xs text-gray-300">
++                      <span>${translateText("admin_game_panel.growth")}</span>
++                      <span>×${this.growthMultiplier}</span>
++                    </span>
++                    <input
++                      class="w-full rounded border border-white/15 bg-black/40 px-3 py-2 text-sm outline-none focus:border-amber-400"
++                      type="number"
++                      min="0.1"
++                      max="100"
++                      step="0.1"
++                      .value=${String(this.growthMultiplier)}
++                      @input=${(e: Event) => {
++                        this.growthMultiplier = this.numberFrom(e, 0.1, 100, 1);
++                      }}
++                    />
++                  </label>
++                  <button
++                    type="button"
++                    class="w-full rounded bg-amber-500 px-3 py-2 text-sm font-bold text-black hover:bg-amber-400"
++                    @click=${this.apply}
++                  >
++                    ${translateText(
++                      this.applied
++                        ? "admin_game_panel.applied"
++                        : "admin_game_panel.apply",
++                    )}
++                  </button>
++                  <p class="text-[11px] leading-4 text-gray-400">
++                    ${translateText("admin_game_panel.private_only")}
++                  </p>
++                </div>
++              `
++            : nothing
++        }
++      </div>
++    `;
++  }
++}
+diff --git a/src/client/hud/layers/GameRightSidebar.ts b/src/client/hud/layers/GameRightSidebar.ts
+index e66d219..e615669 100644
+--- a/src/client/hud/layers/GameRightSidebar.ts
++++ b/src/client/hud/layers/GameRightSidebar.ts
+@@ -11,7 +11,7 @@ import { Controller } from "../../Controller";
+ import { isDesktopShell } from "../../DesktopShell";
+ import { gamePortal } from "../../GamePortal";
+ import { showInGameAlert, showInGameConfirm } from "../../InGameModal";
+-import { TogglePauseIntentEvent } from "../../InputHandler";
++import { CenterCameraEvent, TogglePauseIntentEvent } from "../../InputHandler";
+ import { PauseGameIntentEvent, SendWinnerEvent } from "../../Transport";
+ import { homeHref, showToast, translateText } from "../../Utils";
+ import { GameView } from "../../view";
+@@ -20,6 +20,7 @@ import { ShowReplayPanelEvent } from "./ReplayPanel";
+ import { ShowSettingsModalEvent } from "./SettingsModal";
+ import { SpawnBarVisibleEvent } from "./SpawnTimer";
+ const exitIcon = assetUrl("images/ExitIconWhite.svg");
++const focusIcon = assetUrl("images/FocusIconWhite.svg");
+ const FastForwardIconSolid = assetUrl("images/FastForwardIconSolidWhite.svg");
+ const pauseIcon = assetUrl("images/PauseIconWhite.svg");
+ const playIcon = assetUrl("images/PlayIconWhite.svg");
+@@ -276,10 +277,16 @@ export class GameRightSidebar extends LitElement implements Controller {
+       );
+       if (!isConfirmed) return;
+     }
+-    await gamePortal.requestMidgameAd();
+-    await gamePortal.gameplayStop();
+-    // redirect to the home page
+-    window.location.href = homeHref();
++    try {
++      await gamePortal.requestMidgameAd();
++    } catch (error) {
++      console.warn("Midgame ad failed while leaving the game", error);
++    } finally {
++      // Navigation must not depend on the portal stop callback. A stalled SDK
++      // used to leave the old document half torn down with menu and HUD mixed.
++      void gamePortal.gameplayStop();
++      window.location.href = homeHref();
++    }
+   }
+ 
+   private onSettingsButtonClick() {
+@@ -288,6 +295,10 @@ export class GameRightSidebar extends LitElement implements Controller {
+     );
+   }
+ 
++  private onCenterCameraButtonClick() {
++    this.eventBus.emit(new CenterCameraEvent());
++  }
++
+   private onFullscreenButtonClick() {
+     if (!document.fullscreenElement) {
+       document.documentElement.requestFullscreen().catch((err) => {
+@@ -315,6 +326,10 @@ export class GameRightSidebar extends LitElement implements Controller {
+       isEndTimerActive && this.timer <= FLASH_TIMER_SECONDS;
+     const shouldFlashSidebar =
+       isEndTimerActive && this.timer <= FLASH_SIDEBAR_SECONDS;
++    const canCenterOnPlayer = Boolean(this.game.myPlayer()?.nameLocation());
++    const centerCountryLabel = translateText(
++      "game_right_sidebar.center_my_country",
++    );
+ 
+     const timerClass = shouldFlashTimer
+       ? "game-end-timer-flash"
+@@ -375,6 +390,26 @@ export class GameRightSidebar extends LitElement implements Controller {
+ 
+         <!-- Buttons -->
+         ${this.maybeRenderReplayButtons()}
++        ${
++          canCenterOnPlayer
++            ? html`<button
++                type="button"
++                data-center-country
++                class="flex cursor-pointer items-center border-0 bg-transparent p-0"
++                title=${centerCountryLabel}
++                aria-label=${centerCountryLabel}
++                @mousedown=${(event: MouseEvent) => event.preventDefault()}
++                @click=${this.onCenterCameraButtonClick}
++              >
++                <img
++                  src=${focusIcon}
++                  alt=${centerCountryLabel}
++                  width="20"
++                  height="20"
++                />
++              </button>`
++            : ""
++        }
+ 
+         <div class="cursor-pointer" @click=${this.onSettingsButtonClick}>
+           <img src=${settingsIcon} alt="settings" width="20" height="20" />
+@@ -400,7 +435,11 @@ export class GameRightSidebar extends LitElement implements Controller {
+             : ""
+         }
+ 
+-        <div class="cursor-pointer" @click=${this.onExitButtonClick}>
++        <div
++          data-exit-game
++          class="cursor-pointer"
++          @click=${this.onExitButtonClick}
++        >
+           <img src=${exitIcon} alt="exit" width="20" height="20" />
+         </div>
+       </aside>
+diff --git a/src/client/hud/layers/HeadsUpMessage.ts b/src/client/hud/layers/HeadsUpMessage.ts
+index fc65f07..1fab3fe 100644
+--- a/src/client/hud/layers/HeadsUpMessage.ts
++++ b/src/client/hud/layers/HeadsUpMessage.ts
+@@ -154,11 +154,13 @@ export class HeadsUpMessage extends LitElement implements Controller {
+     }
+ 
+     const showImmunityHudDuration = 10 * 10;
+-    const spawnEnd = this.game.config().numSpawnPhaseTurns();
+-    const ticksSinceSpawnEnd = this.game.ticks() - spawnEnd;
++    const extendedSpawnImmunity = this.game.config().hasExtendedSpawnImmunity();
++    const ticksSinceSpawnEnd = extendedSpawnImmunity
++      ? this.game.ticksSinceStart()
++      : 0;
+ 
+     this.isImmunityActive =
+-      this.game.config().hasExtendedSpawnImmunity() &&
++      extendedSpawnImmunity &&
+       !this.game.inSpawnPhase() &&
+       this.game.isSpawnImmunityActive() &&
+       ticksSinceSpawnEnd < showImmunityHudDuration;
+diff --git a/src/client/hud/layers/ImmunityTimer.ts b/src/client/hud/layers/ImmunityTimer.ts
+index 32a522f..439c6f9 100644
+--- a/src/client/hud/layers/ImmunityTimer.ts
++++ b/src/client/hud/layers/ImmunityTimer.ts
+@@ -46,7 +46,6 @@ export class ImmunityTimer extends LitElement implements Controller {
+     this.style.top = showTeamOwnershipBar ? "7px" : "0px";
+ 
+     const immunityDuration = this.game.config().spawnImmunityDuration();
+-    const spawnPhaseTurns = this.game.config().numSpawnPhaseTurns();
+ 
+     if (
+       !this.game.config().hasExtendedSpawnImmunity() ||
+@@ -54,16 +53,14 @@ export class ImmunityTimer extends LitElement implements Controller {
+     ) {
+       this.setInactive();
+     } else {
+-      const immunityEnd = spawnPhaseTurns + immunityDuration;
+-      const ticks = this.game.ticks();
++      const ticksSinceStart = this.game.ticksSinceStart();
+ 
+-      if (ticks >= immunityEnd || ticks < spawnPhaseTurns) {
++      if (ticksSinceStart >= immunityDuration) {
+         this.setInactive();
+       } else {
+-        const elapsedTicks = Math.max(0, ticks - spawnPhaseTurns);
+         this.progressRatio = Math.min(
+           1,
+-          Math.max(0, elapsedTicks / immunityDuration),
++          Math.max(0, ticksSinceStart / immunityDuration),
+         );
+         this.isActive = true;
+         this.requestUpdate();
 diff --git a/src/client/hud/layers/WinModal.ts b/src/client/hud/layers/WinModal.ts
 index ea3bcc0..f56d86c 100644
 --- a/src/client/hud/layers/WinModal.ts
@@ -22373,6 +23812,304 @@ index 4680d5e..669b618 100644
      // VAO + buffer leak is acceptable on dispose (context is being destroyed)
    }
  }
+diff --git a/src/client/render/gl/passes/UnitPass.ts b/src/client/render/gl/passes/UnitPass.ts
+index 46ee415..af8806b 100644
+--- a/src/client/render/gl/passes/UnitPass.ts
++++ b/src/client/render/gl/passes/UnitPass.ts
+@@ -2,10 +2,12 @@
+  * UnitPass — GPU-rendered mobile unit sprites.
+  *
+  * Renders all mobile (non-structure) units: boats, nukes, shells, SAM
+- * missiles, and MIRV warheads. All unit types are rotationally symmetric
+- * — no rotation needed. Sprites are tiny grayscale PNGs colorized on the
+- * GPU using the standard 3-band gray replacement (180/130/70). MIRV
+- * Warhead uses a programmatic 3×3 white square (colorized to border
++ * missiles, and MIRV warheads. Boats/projectiles use tiny grayscale atlas
++ * sprites colorized on the GPU. Atom + hydrogen share the user-supplied Fat
++ * Man artwork (at different scales), while the MIRV carrier uses its own
++ * artwork. All three rotate to face their movement direction; their baked
++ * checkerboards are keyed out in the fragment shader.
++ * MIRV Warhead uses a programmatic 3×3 white square (colorized to border
+  * color); Shell is a single white pixel.
+  *
+  * Two instanced draw calls per frame — ground units and missiles are
+@@ -62,6 +64,8 @@ import {
+ import { createProgram, shaderSrc } from "../utils/GlUtils";
+ 
+ const unitAtlasUrl = assetUrl("atlases/unit-atlas.png");
++const fatManSpriteUrl = assetUrl("sprites/nuke-fatman.jpg");
++const mirvCarrierSpriteUrl = assetUrl("sprites/nuke-mirv.jpg");
+ 
+ // ---------------------------------------------------------------------------
+ // Constants
+@@ -89,9 +93,15 @@ const UNIT_ORDER = [
+ 
+ const ATLAS_COLS = UNIT_ORDER.length;
+ 
++/** Photo-sprite columns. Atom + hydrogen deliberately share the same source. */
++const ATOM_BOMB_COL = UNIT_ORDER.indexOf(UT_ATOM_BOMB);
++
+ /** Atlas column of the hydrogen bomb — drives the GPU glow halo. */
+ const HYDROGEN_BOMB_COL = UNIT_ORDER.indexOf(UT_HYDROGEN_BOMB);
+ 
++/** Atlas column of the MIRV carrier (the missile before it separates). */
++const MIRV_COL = UNIT_ORDER.indexOf(UT_MIRV);
++
+ /** Atlas column of the warship — gates the warship cosmetic effect. */
+ const WARSHIP_COL = UNIT_ORDER.indexOf(UT_WARSHIP);
+ 
+@@ -109,7 +119,7 @@ const TRAIN_FIRST_COL = UNIT_ORDER.indexOf("TrainEngine");
+  *   uint8 atlasIdx         —  1 byte  (atlas column 0–11)
+  *   uint8 flags            —  1 byte  (0 = normal, 1 = flicker, 2 = angry, 3 = trade-friendly, 4 = retreating, 5 = flicker-untargetable)
+  *   uint8 flickerHash      —  1 byte  (per-instance flicker phase offset)
+- *   1 byte padding         — aligns to 4-byte boundary
++ *   uint8 rotation         —  1 byte  (0–255 maps to 0–2π)
+  */
+ const FLOATS_PER_INSTANCE = 4;
+ const BYTES_PER_INSTANCE = FLOATS_PER_INSTANCE * 4;
+@@ -163,6 +173,37 @@ export function flickerHashByte(x: number, y: number): number {
+   return ((f - Math.floor(f)) * 255) | 0;
+ }
+ 
++/**
++ * Encode the photo sprite's absolute world rotation into the spare instance
++ * byte. Fat Man points left in its source image, while MIRV points up, so each
++ * source gets a different base correction before facing lastPos → pos.
++ */
++export function nukeRotationByte(
++  unitType: string,
++  fromX: number,
++  fromY: number,
++  toX: number,
++  toY: number,
++): number {
++  const dx = toX - fromX;
++  const dy = toY - fromY;
++  if (dx === 0 && dy === 0) return 0;
++
++  const heading = Math.atan2(dy, dx);
++  let rotation: number;
++  if (unitType === UT_ATOM_BOMB || unitType === UT_HYDROGEN_BOMB) {
++    rotation = heading - Math.PI; // Fat Man source points left.
++  } else if (unitType === UT_MIRV) {
++    rotation = heading + Math.PI / 2; // MIRV source points up.
++  } else {
++    return 0;
++  }
++
++  const fullTurn = Math.PI * 2;
++  const normalized = ((rotation % fullTurn) + fullTurn) % fullTurn;
++  return Math.round((normalized / fullTurn) * 256) & 0xff;
++}
++
+ // ---------------------------------------------------------------------------
+ // Helper: create a VAO for instanced unit rendering
+ // ---------------------------------------------------------------------------
+@@ -186,9 +227,9 @@ function createUnitVao(
+   gl.vertexAttribPointer(1, 3, gl.FLOAT, false, BYTES_PER_INSTANCE, 0);
+   gl.vertexAttribDivisor(1, 1);
+ 
+-  // Attribute 2: per-instance (atlasIdx, flags, flickerHash) — 3 uint8s at offset 12, converted to float
++  // Attribute 2: per-instance (atlasIdx, flags, flickerHash, rotation) — 4 uint8s at offset 12, converted to float
+   gl.enableVertexAttribArray(2);
+-  gl.vertexAttribPointer(2, 3, gl.UNSIGNED_BYTE, false, BYTES_PER_INSTANCE, 12);
++  gl.vertexAttribPointer(2, 4, gl.UNSIGNED_BYTE, false, BYTES_PER_INSTANCE, 12);
+   gl.vertexAttribDivisor(2, 1);
+ 
+   gl.bindVertexArray(null);
+@@ -244,6 +285,8 @@ export class UnitPass {
+   private paletteTex: WebGLTexture;
+   private effectTex: WebGLTexture;
+   private atlasTex: WebGLTexture;
++  private fatManTex: WebGLTexture;
++  private mirvCarrierTex: WebGLTexture;
+ 
+   /** Render frame counter received from renderer — drives uTick shader uniform and flicker effects */
+   private frameTick = 0;
+@@ -290,10 +333,18 @@ export class UnitPass {
+     // Compile shaders
+     this.program = createProgram(
+       gl,
+-      shaderSrc(unitVertSrc, { ATLAS_COLS, HYDROGEN_BOMB_COL }),
++      shaderSrc(unitVertSrc, {
++        ATLAS_COLS,
++        ATOM_BOMB_COL,
++        HYDROGEN_BOMB_COL,
++        MIRV_COL,
++      }),
+       shaderSrc(unitFragSrc, {
+         PALETTE_SIZE: getPaletteSize(),
+         ATLAS_COLS,
++        ATOM_BOMB_COL,
++        HYDROGEN_BOMB_COL,
++        MIRV_COL,
+         WARSHIP_COL,
+         WARSHIP_EFFECT_ROW_BASE: WARSHIP_EFFECT_BLOCK * MAX_TRAIL_COLORS,
+         TRAIN_FIRST_COL,
+@@ -338,6 +389,8 @@ export class UnitPass {
+     gl.uniform1i(gl.getUniformLocation(this.program, "uAtlas"), 1);
+     gl.uniform1i(gl.getUniformLocation(this.program, "uAffiliation"), 2);
+     gl.uniform1i(gl.getUniformLocation(this.program, "uEffect"), 3);
++    gl.uniform1i(gl.getUniformLocation(this.program, "uFatManSprite"), 4);
++    gl.uniform1i(gl.getUniformLocation(this.program, "uMirvCarrierSprite"), 5);
+ 
+     // Create placeholder atlas texture (1x1 gray pixel)
+     this.atlasTex = gl.createTexture()!;
+@@ -361,6 +414,8 @@ export class UnitPass {
+ 
+     // Start async atlas build
+     void this.loadAtlas();
++    this.fatManTex = this.createPhotoTexture(fatManSpriteUrl);
++    this.mirvCarrierTex = this.createPhotoTexture(mirvCarrierSpriteUrl);
+ 
+     // --- Shared quad buffer ---
+     this.quadBuf = gl.createBuffer()!;
+@@ -404,6 +459,50 @@ export class UnitPass {
+     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+   }
+ 
++  /** Load a high-resolution user-supplied nuke sprite without modifying it. */
++  private createPhotoTexture(url: string): WebGLTexture {
++    const gl = this.gl;
++    const tex = gl.createTexture()!;
++    gl.bindTexture(gl.TEXTURE_2D, tex);
++    gl.texImage2D(
++      gl.TEXTURE_2D,
++      0,
++      gl.RGBA,
++      1,
++      1,
++      0,
++      gl.RGBA,
++      gl.UNSIGNED_BYTE,
++      new Uint8Array([0, 0, 0, 0]),
++    );
++    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
++    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
++    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
++    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
++
++    const img = new Image();
++    img.crossOrigin = "anonymous";
++    img.src = url;
++    void img
++      .decode()
++      .then(() => {
++        gl.bindTexture(gl.TEXTURE_2D, tex);
++        gl.texImage2D(
++          gl.TEXTURE_2D,
++          0,
++          gl.RGBA,
++          gl.RGBA,
++          gl.UNSIGNED_BYTE,
++          img,
++        );
++      })
++      .catch((err: unknown) => {
++        console.warn(`Failed to load nuke sprite ${url}:`, err);
++      });
++
++    return tex;
++  }
++
+   private emitGround(
+     x: number,
+     y: number,
+@@ -420,6 +519,7 @@ export class UnitPass {
+     this.groundBuf.uint8[byteOff + 12] = atlasIdx;
+     this.groundBuf.uint8[byteOff + 13] = flags;
+     this.groundBuf.uint8[byteOff + 14] = flickerHashByte(x, y);
++    this.groundBuf.uint8[byteOff + 15] = 0;
+     this.groundCount++;
+   }
+ 
+@@ -429,6 +529,7 @@ export class UnitPass {
+     ownerID: number,
+     atlasIdx: number,
+     flags: number,
++    rotationByte = 0,
+   ): void {
+     this.missileBuf.ensureCapacity(this.missileCount + 1);
+     const off = this.missileCount * FLOATS_PER_INSTANCE;
+@@ -439,6 +540,7 @@ export class UnitPass {
+     this.missileBuf.uint8[byteOff + 12] = atlasIdx;
+     this.missileBuf.uint8[byteOff + 13] = flags;
+     this.missileBuf.uint8[byteOff + 14] = flickerHashByte(x, y);
++    this.missileBuf.uint8[byteOff + 15] = rotationByte;
+     this.missileCount++;
+   }
+ 
+@@ -525,6 +627,12 @@ export class UnitPass {
+       const y = (unit.pos - x) / this.mapW;
+ 
+       if (isMissile) {
++        let rotationByte = 0;
++        if (unit.lastPos !== unit.pos) {
++          const lx = unit.lastPos % this.mapW;
++          const ly = (unit.lastPos - lx) / this.mapW;
++          rotationByte = nukeRotationByte(unit.unitType, lx, ly, x, y);
++        }
+         if (
+           SMOOTHED_NUKE_TYPES.has(unit.unitType) &&
+           unit.lastPos !== unit.pos
+@@ -533,7 +641,7 @@ export class UnitPass {
+           const ly = (unit.lastPos - lx) / this.mapW;
+           this.smoothSegs.push(this.missileCount, lx, ly, x, y);
+         }
+-        this.emitMissile(x, y, unit.ownerID, atlasIdx, flags);
++        this.emitMissile(x, y, unit.ownerID, atlasIdx, flags, rotationByte);
+ 
+         // Shells emit a second instance at lastPos (2-pixel trail effect)
+         if (unit.unitType === UT_SHELL && unit.lastPos !== unit.pos) {
+@@ -625,6 +733,12 @@ export class UnitPass {
+ 
+     gl.activeTexture(gl.TEXTURE3);
+     gl.bindTexture(gl.TEXTURE_2D, this.effectTex);
++
++    gl.activeTexture(gl.TEXTURE4);
++    gl.bindTexture(gl.TEXTURE_2D, this.fatManTex);
++
++    gl.activeTexture(gl.TEXTURE5);
++    gl.bindTexture(gl.TEXTURE_2D, this.mirvCarrierTex);
+   }
+ 
+   /** Draw ground/sea units (boats, trains). Render below structures. */
+@@ -681,5 +795,7 @@ export class UnitPass {
+     gl.deleteVertexArray(this.groundVao);
+     gl.deleteVertexArray(this.missileVao);
+     gl.deleteTexture(this.atlasTex);
++    gl.deleteTexture(this.fatManTex);
++    gl.deleteTexture(this.mirvCarrierTex);
+   }
+ }
+diff --git a/src/client/render/gl/passes/name-pass/AtlasData.ts b/src/client/render/gl/passes/name-pass/AtlasData.ts
+index 6d1fc8b..1cf706d 100644
+--- a/src/client/render/gl/passes/name-pass/AtlasData.ts
++++ b/src/client/render/gl/passes/name-pass/AtlasData.ts
+@@ -26,7 +26,8 @@ let atlasData: RawMsdfAtlas | null = null;
+ let atlasDataPromise: Promise<void> | null = null;
+ 
+ export function preloadAtlasData(): Promise<void> {
+-  atlasDataPromise ??= fetch(assetUrl("atlases/msdf-atlas.json"))
++  if (atlasDataPromise !== null) return atlasDataPromise;
++  const load = fetch(assetUrl("atlases/msdf-atlas.json"))
+     .then((response) => {
+       if (!response.ok) {
+         throw new Error(`Failed to fetch msdf-atlas.json: ${response.status}`);
+@@ -36,6 +37,13 @@ export function preloadAtlasData(): Promise<void> {
+     .then((json) => {
+       atlasData = json as RawMsdfAtlas;
+     });
++  const cached = load.catch((error) => {
++    // A lobby prefetch is best-effort; retry at actual game start after a
++    // transient failure instead of keeping a rejected promise forever.
++    if (atlasDataPromise === cached) atlasDataPromise = null;
++    throw error;
++  });
++  atlasDataPromise = cached;
+   return atlasDataPromise;
+ }
+ 
 diff --git a/src/client/render/gl/render-settings.json b/src/client/render/gl/render-settings.json
 index 82a416f..4b49b54 100644
 --- a/src/client/render/gl/render-settings.json
@@ -22398,6 +24135,76 @@ index 82a416f..4b49b54 100644
      "coordinateGridOpacity": 0.5,
      "staleNukeBase": 0,
      "staleNukeVariation": 0.05,
+diff --git a/src/client/render/gl/shaders/map-overlay/trail.frag.glsl b/src/client/render/gl/shaders/map-overlay/trail.frag.glsl
+index da97519..011ad35 100644
+--- a/src/client/render/gl/shaders/map-overlay/trail.frag.glsl
++++ b/src/client/render/gl/shaders/map-overlay/trail.frag.glsl
+@@ -29,9 +29,36 @@ void main() {
+ 
+   uint trailVal = texelFetch(uTrailTex, tc, 0).r;
+   uint owner = trailVal & 0xFFFu;       // bits 0-11 = owner smallID
+-  if (owner == 0u) discard;
+   uint isNuke = (trailVal >> 12) & 1u;  // bit 12 = nuke trail
+ 
++  // Give the default nuclear trail a one-tile fiery rim. Empty pixels look at
++  // neighbouring nuke tiles; boat trails and affiliation view remain exact.
++  bool fireRim = false;
++  if (owner == 0u && uAltView == 0) {
++    for (int oy = -1; oy <= 1 && owner == 0u; oy++) {
++      for (int ox = -1; ox <= 1; ox++) {
++        if (ox == 0 && oy == 0) continue;
++        ivec2 nc = tc + ivec2(ox, oy);
++        if (nc.x < 0 || nc.y < 0 || nc.x >= int(uMapSize.x) || nc.y >= int(uMapSize.y))
++          continue;
++        uint neighbour = texelFetch(uTrailTex, nc, 0).r;
++        uint neighbourOwner = neighbour & 0xFFFu;
++        uint neighbourIsNuke = (neighbour >> 12) & 1u;
++        if (neighbourOwner != 0u && neighbourIsNuke == 1u) {
++          // Custom nuke cosmetics retain their own clean silhouette.
++          int customCount = int(texelFetch(uEffect, ivec2(int(neighbourOwner), MAX_TRAIL_COLORS), 0).a + 0.5);
++          if (customCount <= 0) {
++            owner = neighbourOwner;
++            isNuke = 1u;
++            fireRim = true;
++            break;
++          }
++        }
++      }
++    }
++  }
++  if (owner == 0u) discard;
++
+   vec3 color;
+   if (uAltView != 0) {
+     // Alt view recolors everything by affiliation — effects stay off so the
+@@ -43,7 +70,15 @@ void main() {
+     // MAX_TRAIL_COLORS). The effect attributes are otherwise identical.
+     int rowBase = isNuke == 1u ? MAX_TRAIL_COLORS : 0;
+     int count = int(texelFetch(uEffect, ivec2(o, rowBase), 0).a + 0.5);
+-    if (count <= 0) {
++    if (count <= 0 && isNuke == 1u) {
++      // Fast yellow-white core with orange/red tongues moving along the path.
++      float wave = 0.5 + 0.5 * sin(
++        (vWorldPos.x + vWorldPos.y) * 2.15 - uTime * 9.0 +
++        sin((vWorldPos.x - vWorldPos.y) * 1.3 + uTime * 4.0)
++      );
++      float hot = pow(wave, 1.65);
++      color = mix(vec3(1.0, 0.08, 0.005), vec3(1.0, 0.92, 0.18), hot);
++    } else if (count <= 0) {
+       // No effect — fall back to the player's territory color.
+       float u = (float(owner) + 0.5) / float(PALETTE_SIZE);
+       color = texture(uPalette, vec2(u, 0.25)).rgb;
+@@ -82,5 +117,9 @@ void main() {
+       color = mix(a, b, fract(f));
+     }
+   }
+-  fragColor = vec4(color, uTrailAlpha);
++  float flamePulse = 0.82 + 0.18 * sin(
++    (vWorldPos.x * 1.7 - vWorldPos.y * 1.15) + uTime * 8.5
++  );
++  float alpha = fireRim ? uTrailAlpha * 0.34 * flamePulse : uTrailAlpha;
++  fragColor = vec4(color, alpha);
+ }
 diff --git a/src/client/render/gl/shaders/terrain/terrain.frag.glsl b/src/client/render/gl/shaders/terrain/terrain.frag.glsl
 index cd1ff0b..c1f2bef 100644
 --- a/src/client/render/gl/shaders/terrain/terrain.frag.glsl
@@ -22446,6 +24253,179 @@ index cd1ff0b..c1f2bef 100644
 +
 +  float k = family < 4 ? weight * uDetailStrength[layer] : 0.0;
 +  fragColor = vec4(clamp(base.rgb * (1.0 + z * k), 0.0, 1.0), 1.0);
+ }
+diff --git a/src/client/render/gl/shaders/unit/unit.frag.glsl b/src/client/render/gl/shaders/unit/unit.frag.glsl
+index a0e6064..d208af6 100644
+--- a/src/client/render/gl/shaders/unit/unit.frag.glsl
++++ b/src/client/render/gl/shaders/unit/unit.frag.glsl
+@@ -12,6 +12,8 @@ uniform sampler2D uEffect;        // RGBA32F — shared effect palette, keyed by
+                                   //   color r's rgb; row 0.a = count,
+                                   //   1.a = styleId, 2.a = scalar0,
+                                   //   3.a = scalar1)
++uniform sampler2D uFatManSprite;  // shared atom + hydrogen user artwork
++uniform sampler2D uMirvCarrierSprite; // MIRV before it separates
+ uniform float uTime;              // seconds, for animated effect styles
+ uniform float uTick;
+ uniform float uFlickerSpeed;
+@@ -32,6 +34,7 @@ flat in float vOwnerID;
+ flat in float vFlags;
+ flat in float vHash;
+ flat in float vGlow;
++flat in float vPhotoNuke;
+ 
+ out vec4 fragColor;
+ 
+@@ -106,13 +109,50 @@ void main() {
+   bool inSprite = vCellUV.x >= 0.0 && vCellUV.x <= 1.0 &&
+                   vCellUV.y >= 0.0 && vCellUV.y <= 1.0;
+   if (inSprite) {
+-    vec2 atlasUV = vec2((vAtlasCol + vCellUV.x) / float(ATLAS_COLS), vCellUV.y);
+-    texel = texture(uAtlas, atlasUV);
++    if (vPhotoNuke > 0.5 && vPhotoNuke < 2.5) {
++      texel = texture(uFatManSprite, vCellUV);
++    } else if (vPhotoNuke > 2.5) {
++      texel = texture(uMirvCarrierSprite, vCellUV);
++    } else {
++      vec2 atlasUV = vec2((vAtlasCol + vCellUV.x) / float(ATLAS_COLS), vCellUV.y);
++      texel = texture(uAtlas, atlasUV);
++    }
++
++    // The supplied JPGs contain a baked light-gray checkerboard. Key only
++    // bright, nearly neutral pixels so the dark bomb bodies and outlines stay
++    // untouched; the soft threshold also removes JPEG halos at the silhouette.
++    if (vPhotoNuke > 0.5) {
++      float hi = max(texel.r, max(texel.g, texel.b));
++      float lo = min(texel.r, min(texel.g, texel.b));
++      float neutral = 1.0 - smoothstep(0.035, 0.12, hi - lo);
++      float bright = smoothstep(0.68, 0.82, dot(texel.rgb, vec3(0.299, 0.587, 0.114)));
++      texel.a *= 1.0 - neutral * bright;
++    }
+   }
+ 
+-  // Outside the sprite: render the steady soft glow under the hydrogen bomb,
+-  // otherwise discard. Glow is suppressed in alt (affiliation) view.
++  // Outside the sprite: all three main nukes receive a layered animated flame
++  // aura. Hydrogen also keeps its wider steady glow. Effects are suppressed in
++  // the strategic affiliation view so map readability is preserved.
+   if (texel.a < 0.01) {
++    if (vPhotoNuke > 0.5 && uAltView == 0) {
++      vec2 p = (vQuadPos - 0.5) * 2.0;
++      // Fat Man is horizontal; the MIRV carrier is vertical.
++      // Coefficients stay > 1 on the long axis so the aura fades fully before
++      // reaching the quad edge (no rectangular clipping).
++      p *= vPhotoNuke > 2.5 ? vec2(1.8, 1.05) : vec2(1.05, 1.8);
++      float d = length(p);
++      float tongues = sin(atan(p.y, p.x) * 9.0 + uTime * 7.0 + vHash * 12.0);
++      float lick = sin((p.x - p.y) * 15.0 - uTime * 11.0);
++      float edge = 0.72 + 0.06 * tongues + 0.035 * lick;
++      float flame = 1.0 - smoothstep(edge, 1.03, d);
++      flame *= smoothstep(0.18, 0.68, d);
++      if (flame > 0.002) {
++        float hot = 1.0 - smoothstep(0.34, 0.92, d);
++        vec3 flameColor = mix(vec3(1.0, 0.12, 0.01), vec3(1.0, 0.82, 0.12), hot);
++        fragColor = vec4(flameColor, flame * (0.48 + 0.12 * lick) * alphaMul);
++        return;
++      }
++    }
+     if (vGlow > 0.5 && uAltView == 0) {
+       float d = length(vQuadPos - 0.5) * 2.0; // 0 at center → ~1 at quad edge
+       float g = (1.0 - smoothstep(uHBombGlowInner, 1.0, d)) * uHBombGlowStrength;
+@@ -124,6 +164,21 @@ void main() {
+     discard;
+   }
+ 
++  // Preserve the exact supplied artwork instead of applying the legacy
++  // grayscale/player-color replacement. A very light warm pulse visually ties
++  // the body to its flame aura without hiding the original details.
++  if (vPhotoNuke > 0.5) {
++    if (uAltView != 0) {
++      vec3 ac = texelFetch(uAffiliation, ivec2(int(vOwnerID), 1), 0).rgb;
++      fragColor = vec4(ac, texel.a * alphaMul);
++    } else {
++      float pulse = 0.5 + 0.5 * sin(uTime * 8.0 + vHash * 9.0);
++      vec3 lit = mix(texel.rgb, vec3(1.0, 0.28, 0.025), 0.035 + pulse * 0.045);
++      fragColor = vec4(lit, texel.a * alphaMul);
++    }
++    return;
++  }
++
+   float gray = texel.r;
+ 
+   // Alt-view: solid affiliation color, no gray-replacement bands
+diff --git a/src/client/render/gl/shaders/unit/unit.vert.glsl b/src/client/render/gl/shaders/unit/unit.vert.glsl
+index 3b97f6d..8e40ea3 100644
+--- a/src/client/render/gl/shaders/unit/unit.vert.glsl
++++ b/src/client/render/gl/shaders/unit/unit.vert.glsl
+@@ -5,7 +5,7 @@ layout(location = 0) in vec2 aPos;
+ 
+ // Per-instance attributes
+ layout(location = 1) in vec3 aInstPos;   // x, y, ownerID
+-layout(location = 2) in vec3 aInstFlags; // atlasIdx, flags, flickerHash (uint8→float)
++layout(location = 2) in vec4 aInstFlags; // atlasIdx, flags, flickerHash, rotation (uint8→float)
+ 
+ uniform mat3  uCamera;
+ 
+@@ -20,6 +20,7 @@ flat out float vOwnerID;
+ flat out float vFlags;  // 0.0 = normal, 1.0 = flicker, 2.0 = angry
+ flat out float vHash;   // per-instance hash for flicker phase offset
+ flat out float vGlow;   // 1.0 if this instance is a hydrogen bomb (draw glow), else 0.0
++flat out float vPhotoNuke; // 1 atom, 2 hydrogen, 3 MIRV carrier, 0 other
+ 
+ void main() {
+   float worldX = aInstPos.x;
+@@ -35,18 +36,39 @@ void main() {
+   // every frame for nukes whose position is smoothed per frame.
+   vHash = aInstFlags.z * (1.0 / 255.0);
+ 
+-  // Hydrogen bombs render an enlarged quad so there's room for a glow halo
+-  // around the sprite. All other units keep scale 1 (no behavior change).
++  // The user-supplied Fat Man art is shared by atom + hydrogen. Their visual
++  // scale is deliberately different, while MIRV uses its own carrier art.
++  float isAtom = step(abs(atlasCol - float(ATOM_BOMB_COL)), 0.5);
+   float isHBomb = step(abs(atlasCol - float(HYDROGEN_BOMB_COL)), 0.5);
++  float isMirv = step(abs(atlasCol - float(MIRV_COL)), 0.5);
++  float isPhotoNuke = min(1.0, isAtom + isHBomb + isMirv);
++  vPhotoNuke = isAtom + isHBomb * 2.0 + isMirv * 3.0;
+   vGlow = isHBomb;
+-  float scale = mix(1.0, uHBombGlowScale, isHBomb);
++
++  // Atom is the small version, hydrogen is the large version. The enlarged
++  // quad leaves transparent room for the procedural flame aura.
++  float spriteScale = 1.0;
++  spriteScale = mix(spriteScale, 0.78, isAtom);
++  spriteScale = mix(spriteScale, 1.18, isHBomb);
++  spriteScale = mix(spriteScale, 1.05, isMirv);
++  float auraScale = mix(1.0, 1.55, isPhotoNuke);
++  auraScale = max(auraScale, mix(1.0, uHBombGlowScale, isHBomb));
++  float scale = spriteScale * auraScale;
+ 
+   // UNIT_SIZE is in world-space tiles — no zoom division needed.
+   // Units scale with the map like territory tiles do.
+   float halfSize = uUnitSize * 0.5 * scale;
+ 
+   vec2 center = vec2(worldX + 0.5, worldY + 0.5);
+-  vec2 worldPos = center + (aPos - 0.5) * halfSize * 2.0;
++  // The fourth packed byte covers one full turn in 256 steps. Rotate the
++  // geometry rather than the UVs so the photo, keyed silhouette and flame aura
++  // remain locked together while the bomb turns toward its travel direction.
++  float rotation = aInstFlags.w * (6.28318530718 / 256.0);
++  float c = cos(rotation);
++  float s = sin(rotation);
++  vec2 localPos = (aPos - 0.5) * halfSize * 2.0;
++  vec2 rotatedPos = mat2(c, s, -s, c) * localPos;
++  vec2 worldPos = center + rotatedPos;
+   vWorldPos = worldPos;
+ 
+   vec3 clip = uCamera * vec3(worldPos, 1.0);
+@@ -54,7 +76,7 @@ void main() {
+ 
+   vQuadPos = aPos;
+ 
+-  // Map the enlarged quad back to sprite cell space: the central 1/scale
++  // Map the enlarged quad back to sprite cell space: the central 1/auraScale
+   // portion is the sprite, anything outside [0,1] is glow-only margin.
+-  vCellUV = (aPos - 0.5) * scale + 0.5;
++  vCellUV = (aPos - 0.5) * auraScale + 0.5;
  }
 diff --git a/src/client/render/gl/utils/TerrainDetail.ts b/src/client/render/gl/utils/TerrainDetail.ts
 new file mode 100644
@@ -22610,7 +24590,7 @@ index 0000000..9741c42
 +  return cached;
 +}
 diff --git a/src/client/styles.css b/src/client/styles.css
-index de6a346..d8c676c 100644
+index de6a346..7617ddf 100644
 --- a/src/client/styles.css
 +++ b/src/client/styles.css
 @@ -16,10 +16,27 @@
@@ -22642,6 +24622,23 @@ index de6a346..d8c676c 100644
  
    /* Openfront.io brand palette — see Openfront_Brand_Guidelines.pdf §4 */
    --color-malibu-blue: #0084d1;
+@@ -114,6 +131,16 @@ body.in-game {
+   overflow: hidden;
+ }
+ 
++/*
++ * Game controllers keep their custom elements mounted between matches. If a
++ * navigation is cancelled or a game is left in place, stale Lit output must
++ * never be composited over the home screen.
++ */
++body:not(.in-game) [data-game-hud] {
++  visibility: hidden !important;
++  pointer-events: none !important;
++}
++
+ body.in-game .bg-gray-800\/92:not(.game-end-timer-sidebar-flash) {
+   background-color: rgb(
+     from var(--color-gray-800) r g b / calc(0.92 * var(--hud-opacity, 1))
 diff --git a/src/client/styles/core/variables.css b/src/client/styles/core/variables.css
 index eb80387..a75b6d9 100644
 --- a/src/client/styles/core/variables.css
@@ -22653,6 +24650,421 @@ index eb80387..a75b6d9 100644
 +  --medal-nightmare: #8b3dff;
    --medal-custom: #2196f3;
  }
+diff --git a/src/server/AdminPanelRoutes.ts b/src/server/AdminPanelRoutes.ts
+new file mode 100644
+index 0000000..46d254b
+--- /dev/null
++++ b/src/server/AdminPanelRoutes.ts
+@@ -0,0 +1,31 @@
++import type { Express } from "express";
++import rateLimit from "express-rate-limit";
++import { z } from "zod";
++import { createAdminSession, safePasswordEqual } from "./AdminSession";
++import { ServerEnv } from "./ServerEnv";
++
++const LoginBodySchema = z.object({
++  password: z.string().min(1).max(1024),
++});
++
++export function registerAdminPanelRoutes(app: Express): void {
++  const limiter = rateLimit({
++    windowMs: 60_000,
++    max: 5,
++    standardHeaders: true,
++    legacyHeaders: false,
++  });
++
++  app.post("/api/admin/login", limiter, (req, res) => {
++    const expected = ServerEnv.adminPanelPassword();
++    const secret = ServerEnv.adminPanelSecret();
++    if (expected === undefined || secret === undefined) {
++      return res.status(404).json({ error: "admin_panel_disabled" });
++    }
++    const parsed = LoginBodySchema.safeParse(req.body);
++    if (!parsed.success || !safePasswordEqual(parsed.data.password, expected)) {
++      return res.status(401).json({ error: "invalid_credentials" });
++    }
++    res.json(createAdminSession(secret));
++  });
++}
+diff --git a/src/server/AdminSession.ts b/src/server/AdminSession.ts
+new file mode 100644
+index 0000000..69c1251
+--- /dev/null
++++ b/src/server/AdminSession.ts
+@@ -0,0 +1,114 @@
++import type { TokenPayload } from "@openfront/shared/ApiSchemas";
++import crypto from "crypto";
++
++export const ADMIN_SESSION_PROVIDER = "admin-panel";
++const PREFIX = "ofadmin";
++const SESSION_SECONDS = 4 * 60 * 60;
++
++interface AdminSessionPayload {
++  v: 1;
++  jti: string;
++  sub: string;
++  iat: number;
++  exp: number;
++  role: "root";
++  provider: typeof ADMIN_SESSION_PROVIDER;
++}
++
++function signature(input: string, secret: string): Buffer {
++  return crypto.createHmac("sha256", secret).update(input).digest();
++}
++
++function stableAdminId(secret: string): string {
++  const bytes = signature("openfront-admin-identity-v1", secret).subarray(
++    0,
++    16,
++  );
++  bytes[6] = (bytes[6] & 0x0f) | 0x40;
++  bytes[8] = (bytes[8] & 0x3f) | 0x80;
++  const hex = bytes.toString("hex");
++  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
++}
++
++export function createAdminSession(
++  secret: string,
++  nowSeconds = Math.floor(Date.now() / 1000),
++): { token: string; expiresAt: number } {
++  const payload: AdminSessionPayload = {
++    v: 1,
++    jti: crypto.randomBytes(16).toString("base64url"),
++    sub: stableAdminId(secret),
++    iat: nowSeconds,
++    exp: nowSeconds + SESSION_SECONDS,
++    role: "root",
++    provider: ADMIN_SESSION_PROVIDER,
++  };
++  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
++  const input = `${PREFIX}.${body}`;
++  return {
++    token: `${input}.${signature(input, secret).toString("base64url")}`,
++    expiresAt: payload.exp,
++  };
++}
++
++export function verifyAdminSession(
++  token: string,
++  secret: string,
++  nowSeconds = Math.floor(Date.now() / 1000),
++): TokenPayload | null {
++  const parts = token.split(".");
++  if (parts.length !== 3 || parts[0] !== PREFIX) return null;
++  const input = `${parts[0]}.${parts[1]}`;
++  let supplied: Buffer;
++  try {
++    supplied = Buffer.from(parts[2], "base64url");
++  } catch {
++    return null;
++  }
++  const expected = signature(input, secret);
++  if (
++    supplied.length !== expected.length ||
++    !crypto.timingSafeEqual(supplied, expected)
++  ) {
++    return null;
++  }
++
++  let payload: unknown;
++  try {
++    payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
++  } catch {
++    return null;
++  }
++  if (typeof payload !== "object" || payload === null) return null;
++  const p = payload as Partial<AdminSessionPayload>;
++  if (
++    p.v !== 1 ||
++    typeof p.jti !== "string" ||
++    typeof p.sub !== "string" ||
++    typeof p.iat !== "number" ||
++    typeof p.exp !== "number" ||
++    p.exp <= nowSeconds ||
++    p.iat > nowSeconds + 30 ||
++    p.role !== "root" ||
++    p.provider !== ADMIN_SESSION_PROVIDER ||
++    p.sub !== stableAdminId(secret)
++  ) {
++    return null;
++  }
++  return {
++    jti: p.jti,
++    sub: p.sub,
++    iat: p.iat,
++    exp: p.exp,
++    iss: ADMIN_SESSION_PROVIDER,
++    aud: ADMIN_SESSION_PROVIDER,
++    role: p.role,
++    provider: p.provider,
++  };
++}
++
++export function safePasswordEqual(provided: string, expected: string): boolean {
++  const a = crypto.createHash("sha256").update(provided).digest();
++  const b = crypto.createHash("sha256").update(expected).digest();
++  return crypto.timingSafeEqual(a, b);
++}
+diff --git a/src/server/GameManager.ts b/src/server/GameManager.ts
+index 88451d6..06f700a 100644
+--- a/src/server/GameManager.ts
++++ b/src/server/GameManager.ts
+@@ -65,10 +65,17 @@ export class GameManager {
+     gameID: GameID,
+     lastTurn: number = 0,
+     identityUpdate?: { username: string; clanTag: string | null },
++    requestedSpectator?: boolean,
+   ): boolean {
+     const game = this.games.get(gameID);
+     if (!game) return false;
+-    return game.rejoinClient(ws, persistentID, lastTurn, identityUpdate);
++    return game.rejoinClient(
++      ws,
++      persistentID,
++      lastTurn,
++      identityUpdate,
++      requestedSpectator,
++    );
+   }
+ 
+   createGame(
+diff --git a/src/server/GameServer.ts b/src/server/GameServer.ts
+index 7658d4e..37306a0 100644
+--- a/src/server/GameServer.ts
++++ b/src/server/GameServer.ts
+@@ -90,9 +90,6 @@ import {
+ } from "./WinnerReplay";
+ 
+ // Outcome of GameServer.joinClient. The worker maps each to a close code.
+-// A non-spectator join landing this soon after start() is someone who meant
+-// to play and missed it; after this they are taken to have come to watch.
+-const LATE_JOIN_GRACE_MS = 5_000;
+ 
+ export type JoinResult =
+   | "joined"
+@@ -588,19 +585,15 @@ export class GameServer {
+ 
+     // gameStartInfo.players is frozen at start, so a late arrival could never
+     // spawn. An admitted player reconnecting through the join path keeps
+-    // their seat. A player whose join lands just after the start meant to
+-    // play (a last-second click on the lobby), so they are told they missed
+-    // it rather than dropped into a game they cannot play. Anyone later
+-    // came to watch (a shared link) and joins as a spectator.
++    // their seat. A new Player request must never be silently downgraded to a
++    // spectator: explicit watch links already send spectator=true. Tell a
++    // player they missed this match so the UI can return them to the lobby.
+     if (this.stage === "started") {
+       if (this.rejoinClient(client.ws, client.persistentID, 0)) {
+         return "joined";
+       }
+-      if (
+-        !client.spectator &&
+-        Date.now() - (this._startTime ?? 0) < LATE_JOIN_GRACE_MS
+-      ) {
+-        this.log.info("cannot add client, game just started", {
++      if (!client.spectator) {
++        this.log.info("cannot add player, game already started", {
+           clientID: client.clientID,
+         });
+         client.ws.send(
+@@ -614,7 +607,6 @@ export class GameServer {
+         );
+         return "started";
+       }
+-      client.spectator = true;
+     }
+ 
+     // Spectators take no slot: they never spawn, so a full lobby is still
+@@ -727,6 +719,7 @@ export class GameServer {
+     persistentID: string,
+     lastTurn: number = 0,
+     identityUpdate?: { username: string; clanTag: string | null },
++    requestedSpectator?: boolean,
+   ): boolean {
+     // As in joinClient: an ended game may still be in GameManager until its
+     // next tick, and the roster still holds the reconnect mapping.
+@@ -753,6 +746,15 @@ export class GameServer {
+       client.username = identityUpdate.username;
+       client.clanTag = identityUpdate.clanTag;
+     }
++    // A fresh lobby join carries the mode the player selected in the UI. A
++    // reconnect used to keep the old roster flag instead, so someone who had
++    // watched this lobby once could choose Play and still enter the match as a
++    // spectator. Apply the new choice while the roster is still mutable; the
++    // same seat/allowlist/trust/pool guards as the lobby toggle remain in force.
++    // Mid-game rejoin messages omit this value and preserve the frozen roster.
++    if (requestedSpectator !== undefined && !this.hasStarted()) {
++      this.setSpectator(client, requestedSpectator);
++    }
+     client.lastPing = Date.now();
+     this.markClientDisconnected(client.clientID, false);
+ 
+diff --git a/src/server/IntentAuthorization.ts b/src/server/IntentAuthorization.ts
+index 37cab9c..2432b1e 100644
+--- a/src/server/IntentAuthorization.ts
++++ b/src/server/IntentAuthorization.ts
+@@ -141,6 +141,21 @@ export function authorizeIntent(
+       }
+       return null;
+ 
++    case "admin_set_player_modifiers":
++      if (!actor.isAdmin || actor.isAdminBot) {
++        return { status: 403, error: "administrator role required" };
++      }
++      if (game.isPublic || game.isListed) {
++        return {
++          status: 403,
++          error: "administrator modifiers are private-game only",
++        };
++      }
++      if (!game.hasStarted) {
++        return { status: 409, error: "game not started" };
++      }
++      return null;
++
+     default:
+       // Gameplay intents: websocket players only.
+       if (actor.isAdminBot) {
+diff --git a/src/server/ServerEnv.ts b/src/server/ServerEnv.ts
+index c595041..d08d393 100644
+--- a/src/server/ServerEnv.ts
++++ b/src/server/ServerEnv.ts
+@@ -344,6 +344,18 @@ export class ServerEnv {
+   static adminBotHeader(): string {
+     return "x-admin-bot-key";
+   }
++  // Optional human admin panel. Both values are required: the password is
++  // entered by the operator, while the high-entropy secret signs short-lived
++  // browser sessions. Keeping them separate prevents an intercepted session
++  // token from becoming an offline password oracle.
++  static adminPanelPassword(): string | undefined {
++    const v = process.env.ADMIN_PANEL_PASSWORD;
++    return v && v.length > 0 ? v : undefined;
++  }
++  static adminPanelSecret(): string | undefined {
++    const v = process.env.ADMIN_PANEL_SECRET;
++    return v && v.length >= 32 ? v : undefined;
++  }
+   static allowedFlares(): string[] | undefined {
+     const raw = process.env.ALLOWED_FLARES;
+     if (!raw) return undefined;
+diff --git a/src/server/Worker.ts b/src/server/Worker.ts
+index 1682274..35a080d 100644
+--- a/src/server/Worker.ts
++++ b/src/server/Worker.ts
+@@ -37,6 +37,8 @@ import { fileURLToPath } from "url";
+ import { WebSocket, WebSocketServer } from "ws";
+ import { z } from "zod";
+ import { registerAdminBotRoutes } from "./AdminBotRoutes";
++import { registerAdminPanelRoutes } from "./AdminPanelRoutes";
++import { ADMIN_SESSION_PROVIDER } from "./AdminSession";
+ import { censorPlayer } from "./Censor";
+ import { Client } from "./Client";
+ import { gameApiCors } from "./GameApiCors";
+@@ -377,6 +379,8 @@ export async function startWorker() {
+     next();
+   });
+ 
++  registerAdminPanelRoutes(app);
++
+   // Create a new private game. The worker mints an id that belongs to itself
+   // and returns it, so callers don't need to know the sharding. nginx (and the
+   // vite dev proxy) randomly route here to spread new games across workers.
+@@ -730,7 +734,9 @@ export async function startWorker() {
+           persistentId,
+           isReadmit,
+         );
+-        if (ServerEnv.env() !== GameEnv.Dev) {
++        const isAdminPanelSession =
++          claims?.provider === ADMIN_SESSION_PROVIDER && claims.role === "root";
++        if (ServerEnv.env() !== GameEnv.Dev && !isAdminPanelSession) {
+           const stored = game?.storedIdentity(persistentId) ?? null;
+           const steamAuthed = isSteamAuthenticated(claims);
+           // SECURITY: the reject/skip/verify split (first joins must
+@@ -827,6 +833,7 @@ export async function startWorker() {
+             clientMsg.gameID,
+             0,
+             verifySkipped ? undefined : { username, clanTag },
++            clientMsg.spectator === true,
+           )
+         ) {
+           return;
+@@ -854,7 +861,7 @@ export async function startWorker() {
+             ws.close(CloseCode.Unauthorized, CloseReason.LoginRequired);
+             return;
+           }
+-        } else {
++        } else if (!isAdminPanelSession) {
+           // Verify token and get player permissions
+           const result = await getUserMe(clientMsg.token);
+           if (result.type === "error") {
+diff --git a/src/server/jwt.ts b/src/server/jwt.ts
+index 79cab78..3d30ff5 100644
+--- a/src/server/jwt.ts
++++ b/src/server/jwt.ts
+@@ -9,6 +9,7 @@ import { GameEnv } from "@openfront/shared/configuration/Env";
+ import { PersistentIdSchema } from "@openfront/shared/WireSchemas";
+ import { jwtVerify } from "jose";
+ import { z } from "zod";
++import { verifyAdminSession } from "./AdminSession";
+ import { ServerEnv } from "./ServerEnv";
+ 
+ type TokenVerificationResult =
+@@ -22,6 +23,13 @@ type TokenVerificationResult =
+ export async function verifyClientToken(
+   token: string,
+ ): Promise<TokenVerificationResult> {
++  const adminSecret = ServerEnv.adminPanelSecret();
++  if (adminSecret !== undefined) {
++    const claims = verifyAdminSession(token, adminSecret);
++    if (claims !== null) {
++      return { type: "success", persistentId: claims.sub, claims };
++    }
++  }
+   if (PersistentIdSchema.safeParse(token).success) {
+     if (ServerEnv.env() === GameEnv.Dev) {
+       return { type: "success", persistentId: token, claims: null };
+diff --git a/tests/AdminSetPlayerModifiers.test.ts b/tests/AdminSetPlayerModifiers.test.ts
+new file mode 100644
+index 0000000..233a48b
+--- /dev/null
++++ b/tests/AdminSetPlayerModifiers.test.ts
+@@ -0,0 +1,33 @@
++import { PlayerInfo, PlayerType } from "@openfront/engine-api/game/GameTypes";
++import { AdminSetPlayerModifiersExecution } from "@openfront/engine/execution/AdminSetPlayerModifiersExecution";
++import { SpawnExecution } from "@openfront/engine/execution/SpawnExecution";
++import { setup } from "./util/Setup";
++
++describe("AdminSetPlayerModifiersExecution", () => {
++  it("fills the administrator's reserve and multiplies later troop growth", async () => {
++    const game = await setup("half_land_half_ocean");
++    const info = new PlayerInfo(
++      "admin",
++      PlayerType.Human,
++      null,
++      "admin-client",
++    );
++    game.addPlayer(info);
++    game.addExecution(new SpawnExecution("game_id", info, game.ref(2, 2)));
++    game.executeNextTick();
++    game.executeNextTick();
++
++    const player = game.player(info.id);
++    game.addExecution(new AdminSetPlayerModifiersExecution(player, 50, 5));
++    game.executeNextTick();
++
++    const max = game.config().maxTroops(player);
++    expect(player.troops()).toBeCloseTo(max * 0.5, -1);
++    expect(player.adminTroopGrowthMultiplier()).toBe(5);
++
++    const before = player.troops();
++    const ordinaryIncrease = game.config().troopIncreaseRate(player);
++    game.executeNextTick();
++    expect(player.troops() - before).toBeGreaterThan(ordinaryIncrease * 4);
++  });
++});
 diff --git a/tests/GameModeSelectorRestart.test.ts b/tests/GameModeSelectorRestart.test.ts
 index d73c3aa..33de1cb 100644
 --- a/tests/GameModeSelectorRestart.test.ts
@@ -22762,6 +25174,48 @@ index d73c3aa..33de1cb 100644
 +    expect(vi.getTimerCount()).toBe(withTimer - 1);
 +  });
 +});
+diff --git a/tests/GameRightSidebar.test.ts b/tests/GameRightSidebar.test.ts
+index 5c10cc6..d395f91 100644
+--- a/tests/GameRightSidebar.test.ts
++++ b/tests/GameRightSidebar.test.ts
+@@ -1,12 +1,14 @@
+ // @vitest-environment jsdom
+ import { GameType } from "@openfront/engine-api/game/GameTypes";
+ import { EventBus } from "@openfront/shared/EventBus";
++import { gamePortal } from "../src/client/GamePortal";
+ import { GameRightSidebar } from "../src/client/hud/layers/GameRightSidebar";
+ import { SendWinnerEvent } from "../src/client/Transport";
+ import type { GameView } from "../src/client/view";
+ 
+ vi.mock("../src/client/Utils", async (importOriginal) => ({
+   ...(await importOriginal<typeof import("../src/client/Utils")>()),
++  homeHref: () => "#home",
+   translateText: (key: string) => key,
+ }));
+ 
+@@ -87,6 +89,22 @@ describe("GameRightSidebar end timer warnings", () => {
+   afterEach(() => {
+     window.removeEventListener("show-message", captureToast);
+     document.body.innerHTML = "";
++    window.location.hash = "";
++    vi.restoreAllMocks();
++  });
++
++  it("navigates home even when the portal stop callback never settles", async () => {
++    vi.spyOn(gamePortal, "requestMidgameAd").mockResolvedValue();
++    vi.spyOn(gamePortal, "gameplayStop").mockReturnValue(
++      new Promise<void>(() => {}),
++    );
++    const { sidebar } = createSidebar();
++    await sidebar.updateComplete;
++
++    sidebar.querySelector<HTMLElement>("[data-exit-game]")?.click();
++
++    await vi.waitFor(() => expect(window.location.hash).toBe("#home"));
++    expect(gamePortal.gameplayStop).toHaveBeenCalledOnce();
+   });
+ 
+   it("turns the timer red and fires one heads-up toast at the one-minute mark", async () => {
 diff --git a/tests/NationStructureBehavior.test.ts b/tests/NationStructureBehavior.test.ts
 index daa47f8..9f42228 100644
 --- a/tests/NationStructureBehavior.test.ts
@@ -23048,6 +25502,104 @@ index 0000000..0e901e6
 +    },
 +  );
 +});
+diff --git a/tests/client/ClientGameRunnerActions.test.ts b/tests/client/ClientGameRunnerActions.test.ts
+index fafeb76..6da353c 100644
+--- a/tests/client/ClientGameRunnerActions.test.ts
++++ b/tests/client/ClientGameRunnerActions.test.ts
+@@ -64,6 +64,7 @@ vi.mock("../../src/client/view", () => ({
+   PlayerView: class {},
+ }));
+ vi.mock("../../src/client/WorkerClient", () => ({
++  preloadGameWorker: vi.fn(async () => {}),
+   WorkerClient: class {},
+ }));
+ 
+diff --git a/tests/client/ClientGameRunnerMessages.test.ts b/tests/client/ClientGameRunnerMessages.test.ts
+index 18d2841..fd2f3e1 100644
+--- a/tests/client/ClientGameRunnerMessages.test.ts
++++ b/tests/client/ClientGameRunnerMessages.test.ts
+@@ -22,6 +22,11 @@ const envMocks = vi.hoisted(() => ({
+   gameVersion: vi.fn((_gameID: string): string | undefined => undefined),
+ }));
+ 
++const runtimeMocks = vi.hoisted(() => ({
++  preloadAtlasData: vi.fn(async () => {}),
++  preloadGameWorker: vi.fn(async () => {}),
++}));
++
+ vi.mock("../../src/client/ClientEnv", () => ({
+   ClientEnv: {
+     gitCommit: envMocks.gitCommit,
+@@ -68,7 +73,7 @@ vi.mock("../../src/client/render/gl", () => ({
+   applyGraphicsOverrides: vi.fn(),
+   createRenderSettings: vi.fn(() => ({})),
+   deepAssign: vi.fn(),
+-  preloadAtlasData: vi.fn(async () => {}),
++  preloadAtlasData: runtimeMocks.preloadAtlasData,
+   renderDpr: () => 1,
+   showGLGate: vi.fn(),
+   trackGLInit: vi.fn(),
+@@ -84,6 +89,7 @@ vi.mock("../../src/client/view", () => ({
+   PlayerView: class {},
+ }));
+ vi.mock("../../src/client/WorkerClient", () => ({
++  preloadGameWorker: runtimeMocks.preloadGameWorker,
+   WorkerClient: class {},
+ }));
+ vi.mock("../../src/client/Transport", async (importOriginal) => {
+@@ -205,6 +211,52 @@ afterEach(() => {
+ });
+ 
+ describe("joinLobby lobby-phase messages", () => {
++  it("preloads the common game runtime immediately on lobby entry", () => {
++    joinLobby(new EventBus(), makeLobbyConfig(false));
++
++    expect(runtimeMocks.preloadGameWorker).toHaveBeenCalledOnce();
++    expect(runtimeMocks.preloadAtlasData).toHaveBeenCalledOnce();
++  });
++
++  it("preloads a fixed public-lobby map on its first broadcast", () => {
++    const config = makeLobbyConfig(false);
++    config.source = "public";
++    joinLobby(new EventBus(), config);
++
++    captured.lobbyOnMessage!({
++      type: "lobby_info",
++      myClientID: "c0000001",
++      lobby: {
++        gameID: "game1234",
++        clients: [],
++        gameConfig: { gameMap: "world", gameMapSize: "medium" },
++      },
++    });
++
++    expect(loadCachedTerrainMap).toHaveBeenCalledWith("world", "medium");
++  });
++
++  it("debounces a host-controlled map until it stays selected", () => {
++    const config = makeLobbyConfig(false);
++    config.source = "private";
++    joinLobby(new EventBus(), config);
++    const info = {
++      type: "lobby_info",
++      myClientID: "c0000001",
++      lobby: {
++        gameID: "game1234",
++        clients: [],
++        gameConfig: { gameMap: "world", gameMapSize: "medium" },
++      },
++    };
++
++    captured.lobbyOnMessage!(info);
++    expect(loadCachedTerrainMap).not.toHaveBeenCalled();
++    captured.lobbyOnMessage!(info);
++
++    expect(loadCachedTerrainMap).toHaveBeenCalledWith("world", "medium");
++  });
++
+   it("preloads the terrain and resolves prestart on a prestart message", async () => {
+     const result = joinLobby(new EventBus(), makeLobbyConfig(false));
+ 
 diff --git a/tests/client/DifficultyInfo.test.ts b/tests/client/DifficultyInfo.test.ts
 index 21b168c..6f76d08 100644
 --- a/tests/client/DifficultyInfo.test.ts
@@ -23069,6 +25621,73 @@ index 21b168c..6f76d08 100644
      expect(el.querySelector("button")).toBeNull();
    });
  });
+diff --git a/tests/client/GameRightSidebar.centerCamera.test.ts b/tests/client/GameRightSidebar.centerCamera.test.ts
+new file mode 100644
+index 0000000..6109b49
+--- /dev/null
++++ b/tests/client/GameRightSidebar.centerCamera.test.ts
+@@ -0,0 +1,61 @@
++import { GameType } from "@openfront/engine-api/game/GameTypes";
++import { EventBus } from "@openfront/shared/EventBus";
++import { describe, expect, it } from "vitest";
++import "../../src/client/hud/layers/GameRightSidebar";
++import type { GameRightSidebar } from "../../src/client/hud/layers/GameRightSidebar";
++import { CenterCameraEvent } from "../../src/client/InputHandler";
++import type { GameView } from "../../src/client/view";
++
++type TestSidebar = GameRightSidebar & { updateComplete: Promise<unknown> };
++
++function fakeGame(hasCountry: boolean): GameView {
++  const config = {
++    gameConfig: () => ({
++      gameType: GameType.Public,
++      maxTimerValue: undefined,
++    }),
++    doomsdayClockConfig: () => ({ enabled: false }),
++    overtimeConfig: () => ({ enabled: false, startMinutes: 0 }),
++    isReplay: () => false,
++    listed: false,
++  };
++  return {
++    config: () => config,
++    inSpawnPhase: () => false,
++    elapsedGameSeconds: () => 0,
++    myPlayer: () => ({
++      nameLocation: () => (hasCountry ? { x: 10, y: 20 } : undefined),
++      isLobbyCreator: () => false,
++    }),
++    gameID: () => "test-game",
++    resumedFromSave: () => false,
++  } as unknown as GameView;
++}
++
++async function mount(hasCountry: boolean) {
++  const eventBus = new EventBus();
++  const el = document.createElement("game-right-sidebar") as TestSidebar;
++  el.game = fakeGame(hasCountry);
++  el.eventBus = eventBus;
++  el.init();
++  document.body.appendChild(el);
++  await el.updateComplete;
++  return { el, eventBus };
++}
++
++describe("GameRightSidebar country button", () => {
++  it("centers the camera on the local player's country", async () => {
++    const { el, eventBus } = await mount(true);
++    let centered = 0;
++    eventBus.on(CenterCameraEvent, () => centered++);
++
++    el.querySelector<HTMLButtonElement>("[data-center-country]")?.click();
++
++    expect(centered).toBe(1);
++  });
++
++  it("stays hidden before the player has a country", async () => {
++    const { el } = await mount(false);
++    expect(el.querySelector("[data-center-country]")).toBeNull();
++  });
++});
 diff --git a/tests/client/PurchaseNudgeModal.test.ts b/tests/client/PurchaseNudgeModal.test.ts
 deleted file mode 100644
 index de67386..0000000
@@ -23373,10 +25992,17 @@ index ec0f662..69f171b 100644
    });
  });
 diff --git a/tests/client/graphics/GameRendererCreate.test.ts b/tests/client/graphics/GameRendererCreate.test.ts
-index 40a8083..3ba5941 100644
+index 40a8083..8dabbc3 100644
 --- a/tests/client/graphics/GameRendererCreate.test.ts
 +++ b/tests/client/graphics/GameRendererCreate.test.ts
-@@ -9,6 +9,7 @@ import {
+@@ -3,12 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ // never registers the custom element; register it here.
+ import { EventBus } from "@openfront/shared/EventBus";
+ import "../../../src/client/GameStartingModal";
++import { FrameProfiler } from "../../../src/client/hud/FrameProfiler";
+ import {
+   createRenderer,
+   GameRenderer,
  } from "../../../src/client/hud/GameRenderer";
  import type { EmojiTable } from "../../../src/client/hud/layers/EmojiTable";
  import type { WinModal } from "../../../src/client/hud/layers/WinModal";
@@ -23384,7 +26010,7 @@ index 40a8083..3ba5941 100644
  import { ShowEmojiMenuEvent } from "../../../src/client/InputHandler";
  import type { MapRenderer } from "../../../src/client/render/gl";
  import type { GameView } from "../../../src/client/view";
-@@ -29,6 +30,7 @@ const HUD_TAGS = [
+@@ -29,6 +31,7 @@ const HUD_TAGS = [
    "new-lobby-prompt",
    "replay-panel",
    "game-right-sidebar",
@@ -23392,7 +26018,15 @@ index 40a8083..3ba5941 100644
    "settings-modal",
    "graphics-settings-modal",
    "unit-display",
-@@ -97,6 +99,10 @@ describe("createRenderer", () => {
+@@ -64,6 +67,7 @@ describe("createRenderer", () => {
+   });
+ 
+   afterEach(() => {
++    FrameProfiler.setEnabled(false);
+     vi.restoreAllMocks();
+   });
+ 
+@@ -97,6 +101,10 @@ describe("createRenderer", () => {
      expect(winModal.eventBus).toBe(eventBus);
      expect(winModal.game).toBe(game);
  
@@ -23403,6 +26037,32 @@ index 40a8083..3ba5941 100644
      // Emoji table got its own initEventBus: opening the menu reaches it.
      const emojiTable = elements.get("emoji-table") as EmojiTable;
      expect(emojiTable.game).toBe(game);
+@@ -121,4 +129,25 @@ describe("createRenderer", () => {
+     renderer.dispose();
+     expect(removeSpy).toHaveBeenCalledWith("resize", resizeListener);
+   });
++
++  it("does not tick a throttled layer again before its interval", () => {
++    const layer = {
++      tick: vi.fn(),
++      getTickIntervalMs: () => 1_000,
++    };
++    const overlay = { updateTickLayerMetrics: vi.fn() };
++    const renderer = new GameRenderer(
++      {} as any,
++      {} as any,
++      [layer] as any,
++      overlay as any,
++    );
++    vi.spyOn(performance, "now").mockReturnValueOnce(100).mockReturnValue(200);
++
++    renderer.tick();
++    renderer.tick();
++
++    expect(layer.tick).toHaveBeenCalledOnce();
++    expect(overlay.updateTickLayerMetrics).not.toHaveBeenCalled();
++  });
+ });
 diff --git a/tests/client/graphics/layers/WinModal.test.ts b/tests/client/graphics/layers/WinModal.test.ts
 index e21003e..8acdc95 100644
 --- a/tests/client/graphics/layers/WinModal.test.ts
@@ -23634,6 +26294,404 @@ index 0000000..b086f5b
 +    expect(fs.statSync(file).size).toBeLessThan(400 * 1024);
 +  });
 +});
+diff --git a/tests/client/render/gl/UnitPassSmoothing.test.ts b/tests/client/render/gl/UnitPassSmoothing.test.ts
+index bb4e9ed..1d91e3c 100644
+--- a/tests/client/render/gl/UnitPassSmoothing.test.ts
++++ b/tests/client/render/gl/UnitPassSmoothing.test.ts
+@@ -14,8 +14,14 @@
+ import { afterEach, describe, expect, it, vi } from "vitest";
+ import {
+   flickerHashByte,
++  nukeRotationByte,
+   UnitPass,
+ } from "../../../../src/client/render/gl/passes/UnitPass";
++import {
++  UT_ATOM_BOMB,
++  UT_HYDROGEN_BOMB,
++  UT_MIRV,
++} from "../../../../src/client/render/types";
+ 
+ const FLOATS_PER_INSTANCE = 4;
+ const TICK_MS = 100;
+@@ -185,3 +191,24 @@ describe("flickerHashByte", () => {
+     }
+   });
+ });
++
++describe("nukeRotationByte", () => {
++  const quarterTurn = 64;
++
++  it("makes the left-facing Fat Man artwork point along its movement", () => {
++    expect(nukeRotationByte(UT_ATOM_BOMB, 0, 0, -1, 0)).toBe(0);
++    expect(nukeRotationByte(UT_HYDROGEN_BOMB, 0, 0, 1, 0)).toBe(128);
++    expect(nukeRotationByte(UT_ATOM_BOMB, 0, 0, 0, 1)).toBe(quarterTurn * 3);
++  });
++
++  it("makes the upward-facing MIRV artwork point along its movement", () => {
++    expect(nukeRotationByte(UT_MIRV, 0, 0, 0, -1)).toBe(0);
++    expect(nukeRotationByte(UT_MIRV, 0, 0, 1, 0)).toBe(quarterTurn);
++    expect(nukeRotationByte(UT_MIRV, 0, 0, 0, 1)).toBe(128);
++  });
++
++  it("keeps stationary and non-photo units unrotated", () => {
++    expect(nukeRotationByte(UT_MIRV, 3, 4, 3, 4)).toBe(0);
++    expect(nukeRotationByte("Shell", 0, 0, 1, 1)).toBe(0);
++  });
++});
+diff --git a/tests/client/replay/processor/Processor.test.ts b/tests/client/replay/processor/Processor.test.ts
+index c11acfa..6a737fe 100644
+--- a/tests/client/replay/processor/Processor.test.ts
++++ b/tests/client/replay/processor/Processor.test.ts
+@@ -36,7 +36,7 @@ import {
+   type TickTruth,
+ } from "../util/RecordGame";
+ 
+-const SPAWN_TURNS = 200; // Config.numSpawnPhaseTurns for a public game
++const SPAWN_TURNS = 300; // Config.numSpawnPhaseTurns for a public game
+ 
+ /** Process with truth capture; tiles are sampled (the map is 1M tiles). */
+ async function processWithTruth(
+diff --git a/tests/core/configuration/SpawnPhaseTurns.test.ts b/tests/core/configuration/SpawnPhaseTurns.test.ts
+index 5c303c6..1537783 100644
+--- a/tests/core/configuration/SpawnPhaseTurns.test.ts
++++ b/tests/core/configuration/SpawnPhaseTurns.test.ts
+@@ -4,17 +4,17 @@ import { setup } from "../../util/Setup";
+ 
+ // 10 ticks = 1 second of game time.
+ describe("numSpawnPhaseTurns", () => {
+-  test("multiplayer spawn phase lasts 20 seconds", async () => {
++  test("multiplayer spawn phase allows up to 30 seconds", async () => {
+     const game = await setup("plains", { gameType: GameType.Public });
+-    expect(game.config().numSpawnPhaseTurns()).toBe(200);
++    expect(game.config().numSpawnPhaseTurns()).toBe(300);
+   });
+ 
+-  test("random spawn shortens the spawn phase to 15 seconds", async () => {
++  test("random-spawn multiplayer uses the same 30-second maximum", async () => {
+     const game = await setup("plains", {
+       gameType: GameType.Public,
+       randomSpawn: true,
+     });
+-    expect(game.config().numSpawnPhaseTurns()).toBe(150);
++    expect(game.config().numSpawnPhaseTurns()).toBe(300);
+   });
+ 
+   test("singleplayer spawn phase is 100 ticks regardless of random spawn", async () => {
+diff --git a/tests/core/execution/SpawnExecution.test.ts b/tests/core/execution/SpawnExecution.test.ts
+index 20e4ac7..df7e9eb 100644
+--- a/tests/core/execution/SpawnExecution.test.ts
++++ b/tests/core/execution/SpawnExecution.test.ts
+@@ -1,4 +1,8 @@
+-import { PlayerInfo, PlayerType } from "@openfront/engine-api/game/GameTypes";
++import {
++  GameType,
++  PlayerInfo,
++  PlayerType,
++} from "@openfront/engine-api/game/GameTypes";
+ import { Executor } from "@openfront/engine/execution/ExecutionManager";
+ import { SpawnExecution } from "@openfront/engine/execution/SpawnExecution";
+ import { SpawnTimerExecution } from "@openfront/engine/execution/SpawnTimerExecution";
+@@ -107,6 +111,84 @@ describe("Spawn execution", () => {
+     expect(player.numTilesOwned()).toBeGreaterThan(0);
+   });
+ 
++  test("Online spawn phase ends early after every human selects land", async () => {
++    const players = [
++      new PlayerInfo("player1", PlayerType.Human, "client1", "player1"),
++      new PlayerInfo("player2", PlayerType.Human, "client2", "player2"),
++    ];
++    const game = await setup(
++      "plains",
++      { gameType: GameType.Public },
++      players,
++      undefined,
++      undefined,
++      false,
++    );
++    game.addExecution(
++      new SpawnTimerExecution(),
++      new SpawnExecution("game_id", players[0]),
++      new SpawnExecution("game_id", players[1]),
++    );
++
++    game.executeNextTick();
++    game.executeNextTick();
++    expect(game.inSpawnPhase()).toBe(true);
++
++    game.executeNextTick();
++    expect(game.inSpawnPhase()).toBe(false);
++    expect(game.ticks()).toBeLessThan(game.config().numSpawnPhaseTurns());
++  });
++
++  test("Online spawn phase keeps waiting while a human has not selected land", async () => {
++    const players = [
++      new PlayerInfo("player1", PlayerType.Human, "client1", "player1"),
++      new PlayerInfo("player2", PlayerType.Human, "client2", "player2"),
++    ];
++    const game = await setup(
++      "plains",
++      { gameType: GameType.Public },
++      players,
++      undefined,
++      undefined,
++      false,
++    );
++    game.addExecution(
++      new SpawnTimerExecution(),
++      new SpawnExecution("game_id", players[0]),
++    );
++
++    for (let i = 0; i < 20; i++) game.executeNextTick();
++
++    expect(game.player("player1").hasSpawned()).toBe(true);
++    expect(game.player("player2").hasSpawned()).toBe(false);
++    expect(game.inSpawnPhase()).toBe(true);
++  });
++
++  test("Online spawn phase times out after the 30-second selection window", async () => {
++    const player = new PlayerInfo(
++      "player",
++      PlayerType.Human,
++      "client",
++      "player",
++    );
++    const game = await setup(
++      "plains",
++      { gameType: GameType.Public },
++      [player],
++      undefined,
++      undefined,
++      false,
++    );
++    game.addExecution(new SpawnTimerExecution());
++
++    for (let i = 0; i <= game.config().numSpawnPhaseTurns() + 1; i++) {
++      game.executeNextTick();
++    }
++
++    expect(game.player("player").hasSpawned()).toBe(false);
++    expect(game.inSpawnPhase()).toBe(false);
++  });
++
+   test("Spawn intent after the spawn phase cannot relocate territory (anti-teleport)", async () => {
+     const playerInfo = new PlayerInfo(
+       `player`,
+diff --git a/tests/core/snapshot/FullGameSnapshot.test.ts b/tests/core/snapshot/FullGameSnapshot.test.ts
+index e416667..fe4c955 100644
+--- a/tests/core/snapshot/FullGameSnapshot.test.ts
++++ b/tests/core/snapshot/FullGameSnapshot.test.ts
+@@ -194,9 +194,9 @@ describe.each(VARIANTS)("full game snapshots: %s", (_, overrides) => {
+     "the game exercised every execution type",
+     () => {
+       if (Object.keys(overrides).length > 0) return; // checked once, on FFA
+-      // Runs during the spawn phase and finishes inside init, so it is never
+-      // alive at a tick boundary. BasicExecutions.test.ts covers it directly.
+-      const neverStored = new Set(["Pause"]);
++      // These finish inside init, so they are never alive at a tick boundary.
++      // Dedicated execution tests cover them directly.
++      const neverStored = new Set(["AdminSetPlayerModifiers", "Pause"]);
+       const missing = EXECUTION_SNAPSHOT_TYPES.map((t) => t.name).filter(
+         (name) => !reference.execTypes.has(name) && !neverStored.has(name),
+       );
+diff --git a/tests/server/AdminSession.test.ts b/tests/server/AdminSession.test.ts
+new file mode 100644
+index 0000000..285556b
+--- /dev/null
++++ b/tests/server/AdminSession.test.ts
+@@ -0,0 +1,41 @@
++import {
++  createAdminSession,
++  safePasswordEqual,
++  verifyAdminSession,
++} from "../../src/server/AdminSession";
++
++const SECRET = "a-test-secret-that-is-at-least-thirty-two-characters";
++
++describe("admin sessions", () => {
++  it("mints a bounded root session with a stable identity", () => {
++    const first = createAdminSession(SECRET, 1_000);
++    const second = createAdminSession(SECRET, 1_001);
++    const a = verifyAdminSession(first.token, SECRET, 1_002);
++    const b = verifyAdminSession(second.token, SECRET, 1_002);
++
++    expect(a).toMatchObject({ role: "root", provider: "admin-panel" });
++    expect(a?.sub).toBe(b?.sub);
++    expect(first.expiresAt).toBe(1_000 + 4 * 60 * 60);
++  });
++
++  it("rejects tampering, another secret, and expiry", () => {
++    const session = createAdminSession(SECRET, 1_000);
++    expect(verifyAdminSession(session.token + "x", SECRET, 1_001)).toBeNull();
++    expect(
++      verifyAdminSession(
++        session.token,
++        "another-secret-that-is-at-least-thirty-two-characters",
++        1_001,
++      ),
++    ).toBeNull();
++    expect(
++      verifyAdminSession(session.token, SECRET, session.expiresAt),
++    ).toBeNull();
++  });
++
++  it("compares passwords without accepting prefixes", () => {
++    expect(safePasswordEqual("correct horse", "correct horse")).toBe(true);
++    expect(safePasswordEqual("correct", "correct horse")).toBe(false);
++    expect(safePasswordEqual("wrong horse", "correct horse")).toBe(false);
++  });
++});
+diff --git a/tests/server/GameServerRejoin.test.ts b/tests/server/GameServerRejoin.test.ts
+index 6fb5f46..351c356 100644
+--- a/tests/server/GameServerRejoin.test.ts
++++ b/tests/server/GameServerRejoin.test.ts
+@@ -163,6 +163,51 @@ describe("GameServer.rejoinClient", () => {
+     });
+   });
+ 
++  describe("requested lobby mode", () => {
++    it("lets a returning spectator choose Player before the start", () => {
++      const game = makeGame();
++      const client = makeClient({
++        clientID: P1,
++        persistentID: "p1-pid",
++        spectator: true,
++      });
++      game.joinClient(client);
++
++      expect(
++        game.rejoinClient(makeMockWs() as any, "p1-pid", 0, undefined, false),
++      ).toBe(true);
++      expect(client.spectator).toBe(false);
++      expect(
++        game.gameInfo().clients?.find((c) => c.clientID === P1)?.spectator,
++      ).toBeUndefined();
++    });
++
++    it("lets a returning player choose Spectator before the start", () => {
++      const game = makeGame();
++      const client = makeClient({ clientID: P1, persistentID: "p1-pid" });
++      game.joinClient(client);
++
++      game.rejoinClient(makeMockWs() as any, "p1-pid", 0, undefined, true);
++
++      expect(client.spectator).toBe(true);
++    });
++
++    it("does not change the frozen mode after the game starts", () => {
++      const game = makeGame();
++      const client = makeClient({
++        clientID: P1,
++        persistentID: "p1-pid",
++        spectator: true,
++      });
++      game.joinClient(client);
++      startGame(game);
++
++      game.rejoinClient(makeMockWs() as any, "p1-pid", 0, undefined, false);
++
++      expect(client.spectator).toBe(true);
++    });
++  });
++
+   describe("after the start", () => {
+     function playedGame(turns: number) {
+       const game = makeGame();
+diff --git a/tests/server/IntentAuthorization.test.ts b/tests/server/IntentAuthorization.test.ts
+index 81ecfa1..aacb259 100644
+--- a/tests/server/IntentAuthorization.test.ts
++++ b/tests/server/IntentAuthorization.test.ts
+@@ -41,6 +41,11 @@ const config = (c: Partial<GameConfig>): Intent => ({
+ const timer: Intent = { type: "toggle_game_start_timer" };
+ const pause: Intent = { type: "toggle_pause", paused: true };
+ const spawn: Intent = { type: "spawn", tile: 1 };
++const adminModifiers: Intent = {
++  type: "admin_set_player_modifiers",
++  troopPercent: 75,
++  growthMultiplier: 3,
++};
+ 
+ describe("authorizeIntent", () => {
+   it.each<[string, Intent, IntentActor, IntentGameState, number | null]>([
+@@ -198,6 +203,43 @@ describe("authorizeIntent", () => {
+     ],
+     ["pause before the start", pause, host, lobby(), 409],
+ 
++    [
++      "admin modifiers by an admin in a running private game",
++      adminModifiers,
++      admin,
++      lobby({ hasStarted: true }),
++      null,
++    ],
++    [
++      "admin modifiers by a player",
++      adminModifiers,
++      player,
++      lobby({ hasStarted: true }),
++      403,
++    ],
++    [
++      "admin modifiers by the admin bot",
++      adminModifiers,
++      bot,
++      lobby({ hasStarted: true }),
++      403,
++    ],
++    [
++      "admin modifiers in a public game",
++      adminModifiers,
++      admin,
++      lobby({ isPublic: true, hasStarted: true }),
++      403,
++    ],
++    [
++      "admin modifiers in a listed game",
++      adminModifiers,
++      admin,
++      lobby({ isListed: true, hasStarted: true }),
++      403,
++    ],
++    ["admin modifiers before start", adminModifiers, admin, lobby(), 409],
++
+     ["gameplay by a player", spawn, player, lobby(), null],
+     [
+       "gameplay by a player in a public game",
+diff --git a/tests/server/SpectatorJoin.test.ts b/tests/server/SpectatorJoin.test.ts
+index f163095..c4202c6 100644
+--- a/tests/server/SpectatorJoin.test.ts
++++ b/tests/server/SpectatorJoin.test.ts
+@@ -181,20 +181,21 @@ describe("GameServer - spectators", () => {
+     expect(game.numClients()).toBe(0);
+   });
+ 
+-  it("seats a player arriving well after the start as a spectator", () => {
+-    // Past the grace window the game is no longer joinable from the lobby
+-    // browser; whoever arrives followed a shared link to watch.
++  it("does not silently turn a late Player request into a spectator", () => {
++    // Watching has an explicit join mode. Even well after the start, a Player
++    // request must be refused instead of changing the mode behind the user's
++    // back.
+     const game = makeGame();
+     startGame(game);
+     vi.advanceTimersByTime(5_000);
+     const late = makeClient("late");
+-    expect(game.joinClient(late)).toBe("joined");
+-    expect(late.spectator).toBe(true);
+-    expect(
+-      mockWsOf(late)
+-        .sent()
+-        .some((m) => m.type === "start"),
+-    ).toBe(true);
++    expect(game.joinClient(late)).toBe("started");
++    expect(late.spectator).toBe(false);
++    expect(mockWsOf(late).sent()).toContainEqual({
++      type: "error",
++      error: "game-started",
++    });
++    expect(game.numClients()).toBe(0);
+   });
+ 
+   it("turns away a player whose join lands as a filled lobby starts", () => {
 diff --git a/vite.config.ts b/vite.config.ts
 index 182a003..7d589a6 100644
 --- a/vite.config.ts
