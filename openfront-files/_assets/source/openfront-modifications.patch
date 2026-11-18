@@ -14090,11 +14090,11 @@ index 0000000..c403d46
 +    print(f"{'ALL IDENTICAL' if ok else 'MISMATCH'} in {time.time() - t0:.1f}s")
 diff --git a/openfront-pages b/openfront-pages
 new file mode 160000
-index 0000000..42458cc
+index 0000000..0dfb8c4
 --- /dev/null
 +++ b/openfront-pages
 @@ -0,0 +1 @@
-+Subproject commit 42458ccb57894bfc9d0a4ef6aff4f232d5cc858b
++Subproject commit 0dfb8c4eee6c543be423be72db909ae82610590c
 diff --git a/packages/engine-api/src/Schemas.ts b/packages/engine-api/src/Schemas.ts
 index 0f8de74..3c5fca2 100644
 --- a/packages/engine-api/src/Schemas.ts
@@ -21886,6 +21886,249 @@ index f481bd4..74fc5b9 100644
          <p class="text-base text-white/40 mb-4">
            ${translateText("game_starting_modal.code_license")}
          </p>
+diff --git a/src/client/JoinLobbyModal.ts b/src/client/JoinLobbyModal.ts
+index dde8f30..17a9827 100644
+--- a/src/client/JoinLobbyModal.ts
++++ b/src/client/JoinLobbyModal.ts
+@@ -191,6 +191,178 @@ export class JoinLobbyModal extends BaseModal {
+     `;
+   }
+ 
++  /**
++   * Joining can spend a few seconds negotiating auth and the game socket.
++   * Keep that wait visibly alive so it never looks like a frozen modal.
++   */
++  private renderConnectingState() {
++    const connectingLabel = translateText("public_lobby.connecting");
++
++    return html`
++      <style>
++        @keyframes lobby-signal-ring {
++          0% {
++            opacity: 0.65;
++            transform: scale(0.55);
++          }
++          75%,
++          100% {
++            opacity: 0;
++            transform: scale(1);
++          }
++        }
++
++        @keyframes lobby-radar-sweep {
++          to {
++            transform: rotate(360deg);
++          }
++        }
++
++        @keyframes lobby-connection-flow {
++          0% {
++            transform: translateX(-110%);
++          }
++          100% {
++            transform: translateX(280%);
++          }
++        }
++
++        @keyframes lobby-waiting-dot {
++          0%,
++          60%,
++          100% {
++            opacity: 0.35;
++            transform: translateY(0);
++          }
++          30% {
++            opacity: 1;
++            transform: translateY(-3px);
++          }
++        }
++
++        .lobby-signal-ring {
++          animation: lobby-signal-ring 2.4s ease-out infinite;
++        }
++
++        .lobby-radar-sweep {
++          animation: lobby-radar-sweep 2.8s linear infinite;
++        }
++
++        .lobby-connection-flow {
++          animation: lobby-connection-flow 1.8s ease-in-out infinite;
++        }
++
++        .lobby-waiting-dot {
++          animation: lobby-waiting-dot 1.25s ease-in-out infinite;
++        }
++
++        @media (prefers-reduced-motion: reduce) {
++          .lobby-signal-ring,
++          .lobby-radar-sweep,
++          .lobby-connection-flow,
++          .lobby-waiting-dot {
++            animation-duration: 4s;
++          }
++        }
++      </style>
++
++      <div
++        class="relative min-h-[280px] overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-sky-500/10 via-white/[0.03] to-transparent flex flex-col items-center justify-center px-6 py-8"
++        role="status"
++        aria-live="polite"
++        aria-label=${connectingLabel}
++      >
++        <div
++          class="pointer-events-none absolute -top-24 left-1/2 h-52 w-52 -translate-x-1/2 rounded-full bg-sky-400/10 blur-3xl"
++        ></div>
++
++        <div class="relative mb-6 h-36 w-36" aria-hidden="true">
++          <div
++            class="lobby-signal-ring absolute inset-0 rounded-full border border-sky-300/40"
++          ></div>
++          <div
++            class="lobby-signal-ring absolute inset-0 rounded-full border border-sky-300/30"
++            style="animation-delay: 0.8s"
++          ></div>
++          <div
++            class="lobby-signal-ring absolute inset-0 rounded-full border border-sky-300/20"
++            style="animation-delay: 1.6s"
++          ></div>
++
++          <div
++            class="absolute inset-4 rounded-full border border-white/10 bg-black/30 shadow-[0_0_45px_rgba(56,189,248,0.16)] backdrop-blur-sm"
++          >
++            <div
++              class="lobby-radar-sweep absolute inset-1 rounded-full opacity-75"
++              style="background: conic-gradient(from 90deg, transparent 0deg, transparent 285deg, rgba(125,211,252,.5) 340deg, transparent 360deg);"
++            ></div>
++            <div
++              class="absolute inset-0 m-auto flex h-14 w-14 items-center justify-center rounded-full border border-sky-300/30 bg-sky-400/15 text-sky-100 shadow-[0_0_24px_rgba(56,189,248,0.35)]"
++            >
++              <svg
++                class="h-7 w-7"
++                viewBox="0 0 24 24"
++                fill="none"
++                stroke="currentColor"
++                stroke-width="1.8"
++                stroke-linecap="round"
++                stroke-linejoin="round"
++              >
++                <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
++                <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
++                <path d="M12 20h.01"></path>
++              </svg>
++            </div>
++          </div>
++        </div>
++
++        <div class="flex items-center justify-center gap-1.5 text-center">
++          <p class="text-sm font-bold tracking-wide text-white/90">
++            ${connectingLabel.replace(/\.{3}|…/g, "")}
++          </p>
++          <span class="flex items-end gap-1" aria-hidden="true">
++            <span
++              class="lobby-waiting-dot h-1 w-1 rounded-full bg-sky-300"
++            ></span>
++            <span
++              class="lobby-waiting-dot h-1 w-1 rounded-full bg-sky-300"
++              style="animation-delay: 0.15s"
++            ></span>
++            <span
++              class="lobby-waiting-dot h-1 w-1 rounded-full bg-sky-300"
++              style="animation-delay: 0.3s"
++            ></span>
++          </span>
++        </div>
++
++        <div
++          class="relative mt-5 h-1.5 w-full max-w-64 overflow-hidden rounded-full bg-white/10"
++          role="progressbar"
++          aria-label=${connectingLabel}
++        >
++          <div
++            class="lobby-connection-flow absolute inset-y-0 left-0 w-2/5 rounded-full bg-gradient-to-r from-transparent via-sky-300 to-transparent shadow-[0_0_12px_rgba(125,211,252,0.8)]"
++          ></div>
++        </div>
++
++        <div
++          class="mt-5 flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white/55"
++          aria-hidden="true"
++        >
++          <span class="relative flex h-2 w-2">
++            <span
++              class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-60"
++            ></span>
++            <span
++              class="relative inline-flex h-2 w-2 rounded-full bg-emerald-300"
++            ></span>
++          </span>
++          ${translateText("multi_tab.please_wait")}
++        </div>
++      </div>
++    `;
++  }
++
+   protected renderBody() {
+     // Pre-join state: show lobby ID input form
+     if (!this.currentLobbyId) {
+@@ -205,8 +377,9 @@ export class JoinLobbyModal extends BaseModal {
+             this.serverTimeOffset,
+           )
+         : null;
+-    const statusLabel =
+-      secondsRemaining === null
++    const statusLabel = this.isConnecting
++      ? translateText("public_lobby.connecting")
++      : secondsRemaining === null
+         ? this.isPrivateLobby()
+           ? translateText("private_lobby.joined_waiting")
+           : translateText("public_lobby.waiting_for_players")
+@@ -226,18 +399,7 @@ export class JoinLobbyModal extends BaseModal {
+         <div class="flex-1 custom-scrollbar p-6 space-y-4 mr-1">
+           ${
+             this.isConnecting
+-              ? html`
+-                  <div
+-                    class="min-h-[240px] flex flex-col items-center justify-center gap-4"
+-                  >
+-                    <div
+-                      class="w-12 h-12 border-4 border-white/20 border-t-white rounded-full animate-spin"
+-                    ></div>
+-                    <p class="text-center text-white/80 text-sm">
+-                      ${translateText("public_lobby.connecting")}
+-                    </p>
+-                  </div>
+-                `
++              ? this.renderConnectingState()
+               : html`
+                   ${this.gameConfig ? this.renderGameConfig() : html``}
+                   ${
+@@ -280,7 +442,26 @@ export class JoinLobbyModal extends BaseModal {
+                   class="text-[10px] font-bold uppercase tracking-widest text-white/40"
+                   >${translateText("public_lobby.status")}</span
+                 >
+-                <span class="text-sm font-bold text-white">${statusLabel}</span>
++                <span
++                  class="flex items-center gap-2 text-sm font-bold text-white"
++                >
++                  ${
++                    this.isConnecting
++                      ? html`<span
++                          class="relative flex h-2 w-2 shrink-0"
++                          aria-hidden="true"
++                        >
++                          <span
++                            class="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-300 opacity-60"
++                          ></span>
++                          <span
++                            class="relative inline-flex h-2 w-2 rounded-full bg-sky-300"
++                          ></span>
++                        </span>`
++                      : html``
++                  }
++                  ${statusLabel}
++                </span>
+               </div>
+               ${this.renderSpectateToggle()}
+               ${
 diff --git a/src/client/KeyboardLayout.ts b/src/client/KeyboardLayout.ts
 index d41c7e2..e578c5a 100644
 --- a/src/client/KeyboardLayout.ts
