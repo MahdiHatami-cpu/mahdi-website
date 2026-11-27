@@ -8975,10 +8975,10 @@ index 0000000..fb8d150
 +console.log("typecheck ok");
 diff --git a/cloudflare/src/Game.ts b/cloudflare/src/Game.ts
 new file mode 100644
-index 0000000..9c7721a
+index 0000000..6cf8ac3
 --- /dev/null
 +++ b/cloudflare/src/Game.ts
-@@ -0,0 +1,800 @@
+@@ -0,0 +1,803 @@
 +// One game's server-side state: the lobby, the start sequence and the turn loop.
 +//
 +// This is the relay half of src/server/GameServer.ts, rewritten without Node
@@ -9007,6 +9007,7 @@ index 0000000..9c7721a
 +import {
 +  type ClientMessage,
 +  type GameInfo,
++  type PlayerCosmetics,
 +  type PublicGameInfo,
 +  type PublicGameType,
 +  type ServerMessage,
@@ -9118,6 +9119,7 @@ index 0000000..9c7721a
 +    public clanTag: string | null,
 +    public ws: WebSocket | null,
 +    public spectator: boolean,
++    public cosmetics: PlayerCosmetics | undefined,
 +  ) {}
 +
 +  get open(): boolean {
@@ -9659,6 +9661,7 @@ index 0000000..9c7721a
 +        clanTag: c.clanTag,
 +        clientID: c.clientID,
 +        isLobbyCreator: this.lobbyCreatorID === c.clientID,
++        cosmetics: c.cosmetics,
 +      })),
 +    });
 +    if (!parsed.success) {
@@ -9781,10 +9784,10 @@ index 0000000..9c7721a
 +}
 diff --git a/cloudflare/src/GameHost.ts b/cloudflare/src/GameHost.ts
 new file mode 100644
-index 0000000..e6e1a53
+index 0000000..6ff9bdb
 --- /dev/null
 +++ b/cloudflare/src/GameHost.ts
-@@ -0,0 +1,646 @@
+@@ -0,0 +1,654 @@
 +// The Worker-index object (/w0, /w1, ...): the Cloudflare counterpart of one
 +// src/server/Worker.ts process plus its share of the master's lobby scheduling.
 +// It owns every game of its shard, the game WebSocket, the lobby-list WebSocket,
@@ -9808,6 +9811,7 @@ index 0000000..e6e1a53
 +import { isValidGameID } from "@openfront/engine-api/Schemas";
 +import { simpleHash } from "@openfront/engine-lib/Util";
 +import { CloseCode, CloseReason } from "@openfront/shared/CloseCodes";
++import { resolveFreeTerritoryPattern } from "@openfront/shared/FreeTerritoryPatterns";
 +import { generateGameID, generateID } from "@openfront/shared/SharedUtil";
 +import { type ClientMessage } from "@openfront/shared/WireSchemas";
 +import {
@@ -10295,6 +10299,13 @@ index 0000000..e6e1a53
 +      clanTag,
 +      s.ws,
 +      msg.spectator === true,
++      (() => {
++        const pattern = resolveFreeTerritoryPattern(
++          msg.cosmetics?.patternName,
++          msg.cosmetics?.patternColorPaletteName,
++        );
++        return pattern ? { pattern } : undefined;
++      })(),
 +    );
 +    switch (game.join(conn)) {
 +      case "joined":
@@ -14090,11 +14101,11 @@ index 0000000..c403d46
 +    print(f"{'ALL IDENTICAL' if ok else 'MISMATCH'} in {time.time() - t0:.1f}s")
 diff --git a/openfront-pages b/openfront-pages
 new file mode 160000
-index 0000000..17532e2
+index 0000000..d49e342
 --- /dev/null
 +++ b/openfront-pages
 @@ -0,0 +1 @@
-+Subproject commit 17532e2460402c233ee7267500bc0f1a302a196e
++Subproject commit d49e342015e3b409a84a09f8edbc5038b1b1ec51
 diff --git a/packages/engine-api/src/Schemas.ts b/packages/engine-api/src/Schemas.ts
 index 0f8de74..3c5fca2 100644
 --- a/packages/engine-api/src/Schemas.ts
@@ -15487,6 +15498,96 @@ index 9537811..d28f02a 100644
  });
  
  const RecentGameTypeStatsSchema = RecentByDifficultySchema.extend({
+diff --git a/packages/shared/src/FreeTerritoryPatterns.ts b/packages/shared/src/FreeTerritoryPatterns.ts
+new file mode 100644
+index 0000000..e40af43
+--- /dev/null
++++ b/packages/shared/src/FreeTerritoryPatterns.ts
+@@ -0,0 +1,84 @@
++import type { PlayerPattern } from "./WireSchemas";
++
++/**
++ * Territory patterns bundled with the community edition.
++ *
++ * These are intentionally local and free: no account, entitlement flare, or
++ * premium currency is required. Pattern data uses OpenFront's compact binary
++ * tile format (12 x 12 cells, scale 1).
++ */
++export const FREE_TERRITORY_PATTERNS = {
++  desert_dunes: {
++    patternData: "AFEo4EBADv7x-xsf4EBADv7x-xsf",
++    palette: {
++      name: "desert_sunset",
++      primaryColor: "#f2c879",
++      secondaryColor: "#b86b3d",
++    },
++  },
++  desert_camo: {
++    patternData: "AFEozCaVzSqTGfx_MDjJtLPVzWYx",
++    palette: {
++      name: "field_olive",
++      primaryColor: "#8d9860",
++      secondaryColor: "#3f4932",
++    },
++  },
++  guardian_chevron: {
++    patternData: "AFEo8GBmD__5D29m8JCf8GBmD__5",
++    palette: {
++      name: "guardian_blue",
++      primaryColor: "#d9e3f0",
++      secondaryColor: "#315a7d",
++    },
++  },
++  royal_diamonds: {
++    patternData: "AFEo____5zc8w3N-________5zc8",
++    palette: {
++      name: "royal_gold",
++      primaryColor: "#e2c15a",
++      secondaryColor: "#6c3a83",
++    },
++  },
++  circuit_grid: {
++    patternData: "AFEoEOK93umtXgsh3uu81qu9EOI9",
++    palette: {
++      name: "cyber_teal",
++      primaryColor: "#55d6be",
++      secondaryColor: "#143b55",
++    },
++  },
++  storm_cells: {
++    patternData: "AFEo_x-GYRiGYfj__x-GYRiGYfj_",
++    palette: {
++      name: "storm_slate",
++      primaryColor: "#a7b6c8",
++      secondaryColor: "#384860",
++    },
++  },
++} as const;
++
++export type FreeTerritoryPatternName = keyof typeof FREE_TERRITORY_PATTERNS;
++
++export function isFreeTerritoryPatternName(
++  name: string,
++): name is FreeTerritoryPatternName {
++  return Object.prototype.hasOwnProperty.call(FREE_TERRITORY_PATTERNS, name);
++}
++
++/** Resolve a free wire reference without consulting an account service. */
++export function resolveFreeTerritoryPattern(
++  name: string | undefined,
++  paletteName: string | null | undefined,
++): PlayerPattern | undefined {
++  if (!name || !isFreeTerritoryPatternName(name)) return undefined;
++  const definition = FREE_TERRITORY_PATTERNS[name];
++  if (paletteName !== undefined && paletteName !== null) {
++    if (paletteName !== definition.palette.name) return undefined;
++  }
++  return {
++    name,
++    patternData: definition.patternData,
++    colorPalette: { ...definition.palette },
++  };
++}
 diff --git a/resources/atlases/fx-atlas.png b/resources/atlases/fx-atlas.png
 index 4754224..b8eb005 100644
 Binary files a/resources/atlases/fx-atlas.png and b/resources/atlases/fx-atlas.png differ
@@ -16132,7 +16233,7 @@ new file mode 100644
 index 0000000..966fec4
 Binary files /dev/null and b/resources/images/terrain-detail.webp differ
 diff --git a/resources/lang/en.json b/resources/lang/en.json
-index 8e3318f..a577c9a 100644
+index 8e3318f..9d74b43 100644
 --- a/resources/lang/en.json
 +++ b/resources/lang/en.json
 @@ -167,6 +167,27 @@
@@ -16264,7 +16365,57 @@ index 8e3318f..a577c9a 100644
    "radial_menu": {
      "delete_unit_description": "Click to delete the nearest unit",
      "delete_unit_title": "Delete Unit",
-@@ -2556,7 +2579,7 @@
+@@ -2423,13 +2446,15 @@
+     "confirm_subscribe_over_grant_no_days": "Start a paid {tier} subscription now? Your free access ends immediately, and the time left on it is not refunded and not added to your paid time.",
+     "confirm_tier_change_steam": "Subscribe to {tier} now? Your new tier starts immediately at full price, and the rest of your current month is not refunded.",
+     "confirm_upgrade": "Upgrade to {tier}? You'll be charged the prorated difference now.",
+-    "cosmetics": "Cosmetics",
++    "cosmetics": "Free Country Designs",
+     "crowns": "Crowns",
+     "currency_pack_purchase_success": "Currency pack purchase successful!",
+     "custom_amount": "Choose Amount",
+     "custom_currency_purchase_success": "Plutonium purchase successful!",
+     "effects": "Effects",
+     "flags": "Flags",
++    "free_equip": "Free — Equip",
++    "free_equipped": "Equipped {name}",
+     "insufficient_currency_body": "You need {amount, number} more {currency} to buy {item}.",
+     "insufficient_currency_title": "Insufficient {currency}",
+     "login_required": "You must be logged in to purchase with currency.",
+@@ -2480,7 +2505,7 @@
+     "switch_button": "Switch",
+     "tier_change_steam_needs_desktop": "Your subscription is billed through Steam. Change it from the OpenFront app on Steam, or manage it in your Steam account settings.",
+     "tier_change_unavailable_steam": "To switch tiers on Steam, cancel your subscription in your Steam account settings and subscribe to the new tier after your current month ends.",
+-    "title": "Store",
++    "title": "Country Designs",
+     "tribe_boost_button": "Boost",
+     "tribe_boost_confirm": "Boost \"{name}\" for {price} Plutonium? It will appear more often in other players' games for the next {days} days.",
+     "tribe_boost_count": "1 boost",
+@@ -2540,8 +2565,22 @@
+     "yellow": "Yellow"
+   },
+   "territory_patterns": {
++    "color_palette": {
++      "cyber_teal": "Cyber Teal",
++      "desert_sunset": "Desert Sunset",
++      "field_olive": "Field Olive",
++      "guardian_blue": "Guardian Blue",
++      "royal_gold": "Royal Gold",
++      "storm_slate": "Storm Slate"
++    },
+     "pattern": {
+-      "default": "Default"
++      "circuit_grid": "Circuit Grid",
++      "default": "Default",
++      "desert_camo": "Desert Camo",
++      "desert_dunes": "Desert Dunes",
++      "guardian_chevron": "Guardian Chevron",
++      "royal_diamonds": "Royal Diamonds",
++      "storm_cells": "Storm Cells"
+     },
+     "select_skin": "Skin"
+   },
+@@ -2556,7 +2595,7 @@
      "canvas_2d_no_gpu": "Canvas 2D (no GPU)",
      "charging": "Charging",
      "chromium_tip": "OpenFront runs best on Chromium-based browsers.",
@@ -16273,7 +16424,7 @@ index 8e3318f..a577c9a 100644
      "device_pixel_ratio": "Device Pixel Ratio",
      "environment": "Environment",
      "gpu": "GPU",
-@@ -2889,10 +2912,7 @@
+@@ -2889,10 +2928,7 @@
    },
    "win_modal": {
      "died": "You died",
@@ -16284,7 +16435,7 @@ index 8e3318f..a577c9a 100644
      "keep": "Keep Playing",
      "match_cancelled": "Match cancelled — not all players spawned",
      "nation_won": "Nation {nation} has won!",
-@@ -2903,9 +2923,13 @@
+@@ -2903,9 +2939,13 @@
      "share": "Share",
      "spectate": "Spectate",
      "support_openfront": "Support OpenFront!",
@@ -16300,7 +16451,7 @@ index 8e3318f..a577c9a 100644
    }
  }
 diff --git a/resources/lang/fa.json b/resources/lang/fa.json
-index 1159f41..a6830cf 100644
+index 1159f41..4a86316 100644
 --- a/resources/lang/fa.json
 +++ b/resources/lang/fa.json
 @@ -166,7 +166,9 @@
@@ -16873,7 +17024,33 @@ index 1159f41..a6830cf 100644
    },
    "rewards_modal": {
      "title": "پاداش‎​ها"
-@@ -2355,7 +2429,9 @@
+@@ -2265,13 +2339,15 @@
+     "confirm_subscribe_over_grant_no_days": "همین حالا اشتراک پولی {tier} فعال شود؟ دسترسی رایگان شما بلافاصله پایان می‌یابد و زمان باقی‌مانده از آن بازپرداخت نمی‌شود و به مدت‌زمان اشتراک پولی شما اضافه نخواهد شد.",
+     "confirm_tier_change_steam": "هم‌اکنون در {tier} ثبت‌نام می‌کنید؟ سطح جدید شما بلافاصله با قیمت کامل آغاز می‌شود و باقی‌مانده ماه جاری شما بازپرداخت نخواهد شد.",
+     "confirm_upgrade": "به {tier} ارتقا می‌دهید؟ اختلاف هزینه به‌صورت متناسب همین حالا از شما دریافت می‌شود.",
+-    "cosmetics": "آیتم‌های تزئینی",
++    "cosmetics": "طرح‌های رایگان کشور",
+     "crowns": "تاج‌ها",
+     "currency_pack_purchase_success": "خرید بسته ارزی با موفقیت انجام شد!",
+     "custom_amount": "انتخاب مقدار",
+     "custom_currency_purchase_success": "خرید پلوتونیوم با موفقیت انجام شد!",
+     "effects": "افکت ها",
+     "flags": "پرچم‌ها",
++    "free_equip": "رایگان — انتخاب",
++    "free_equipped": "طرح {name} انتخاب شد",
+     "insufficient_currency_body": "برای خرید {item} به {amount, number} {currency} دیگر نیاز دارید.",
+     "insufficient_currency_title": "موجودی {currency} کافی نیست",
+     "login_required": "برای خرید با ارز باید وارد سیستم شوید.",
+@@ -2321,7 +2397,7 @@
+     "switch_button": "تعویض",
+     "tier_change_steam_needs_desktop": "اشتراک شما از طریق استیم صورت‌حساب می‌شود. آن را از طریق برنامه اوپن فرانت در استیم تغییر داده یا در تنظیمات حساب استیم خود مدیریت کنید.",
+     "tier_change_unavailable_steam": "برای تغییر سطح اشتراک در استیم، اشتراک خود را در تنظیمات حساب استیم لغو کرده و پس از اتمام ماه جاری، در سطح جدید ثبت‌نام کنید.",
+-    "title": "فروشگاه",
++    "title": "طرح‌های کشور",
+     "tribe_boost_button": "تقویت",
+     "tribe_boost_confirm": "«{name}» را به مدت {days} روز با {price} پلوتونیوم بوست کنید؟ این مورد در بازی سایر بازیکنان بیشتر نمایش داده خواهد شد.",
+     "tribe_boost_count": "۱ بوست",
+@@ -2355,7 +2431,9 @@
      "tribes_login_required": "برای خرید و مدیریت نام‌های قبیله وارد شوید.",
      "tribes_purchase_description": "نام شما به یک قبیله بات در بازی‌های آنلاین واقعی اختصاص می‌یابد و بلافاصله فعال می‌شود.",
      "tribes_purchase_heading": "خرید نام قبیله",
@@ -16884,7 +17061,31 @@ index 1159f41..a6830cf 100644
    },
    "streaming_now": {
      "live_count": "{count} پخش زنده",
-@@ -2674,7 +2750,21 @@
+@@ -2381,8 +2459,22 @@
+     "yellow": "زرد"
+   },
+   "territory_patterns": {
++    "color_palette": {
++      "cyber_teal": "فیروزه‌ای سایبری",
++      "desert_sunset": "غروب کویر",
++      "field_olive": "زیتونی نظامی",
++      "guardian_blue": "آبی نگهبان",
++      "royal_gold": "طلایی سلطنتی",
++      "storm_slate": "خاکستری طوفانی"
++    },
+     "pattern": {
+-      "default": "پیش فرض"
++      "circuit_grid": "شبکه مداری",
++      "default": "پیش فرض",
++      "desert_camo": "استتار صحرایی",
++      "desert_dunes": "موج شن",
++      "guardian_chevron": "نشان نگهبان",
++      "royal_diamonds": "الماس سلطنتی",
++      "storm_cells": "هسته‌های طوفان"
+     },
+     "select_skin": "انتخاب پوسته"
+   },
+@@ -2674,7 +2766,21 @@
      "zoom_in": "بزرگ‌نمایی",
      "zoom_in_desc": "نقشه را بزرگ‌نمایی کنید",
      "zoom_out": "کوچک‌نمایی",
@@ -16907,7 +17108,7 @@ index 1159f41..a6830cf 100644
    },
    "username": {
      "account_invalid_chars": "نام کاربری فقط می‌تواند شامل حروف، اعداد، خط زیر (_)، خط تیره (-) و یک فاصله بین کلمات باشد.",
-@@ -2732,6 +2822,102 @@
+@@ -2732,6 +2838,102 @@
      "territory_pattern": "یک پوستهٔ سرزمین بخرید تا از تبلیغات رها شوید!",
      "you_won": "شما بردید!",
      "your_team": "تیم شما پیروز شد!",
@@ -21965,6 +22166,144 @@ index a8add65..3cde6a4 100644
            void requestTerrainLoad(gameConfig.gameMap, gameConfig.gameMapSize);
          }
        }
+diff --git a/src/client/Controller.ts b/src/client/Controller.ts
+index e9151af..9387a84 100644
+--- a/src/client/Controller.ts
++++ b/src/client/Controller.ts
+@@ -14,6 +14,9 @@ export interface Controller {
+   /** Called once at game start. Subscribe to events / set up state here. */
+   init?: () => void;
+ 
++  /** Release resources owned by this game. */
++  dispose?: () => void;
++
+   /**
+    * Called per game tick (10Hz). Optional — pure event subscribers can omit.
+    *
+diff --git a/src/client/Cosmetics.ts b/src/client/Cosmetics.ts
+index 431ab56..f8cd6c6 100644
+--- a/src/client/Cosmetics.ts
++++ b/src/client/Cosmetics.ts
+@@ -35,6 +35,10 @@ import {
+   purchaseWithCurrency,
+ } from "./Api";
+ import { isDesktopShell } from "./DesktopShell";
++import {
++  isFreeTerritoryPatternName,
++  withFreeTerritoryPatterns,
++} from "./FreeTerritoryCosmetics";
+ import { showInGameAlert, showInGameConfirm } from "./InGameModal";
+ import {
+   classifyPurchaseReturn,
+@@ -874,21 +878,28 @@ export async function fetchCosmetics(): Promise<Cosmetics | null> {
+       });
+       if (!response.ok) {
+         console.warn(`HTTP error! status: ${response.status}`);
+-        return null;
++        const local = withFreeTerritoryPatterns(null);
++        __cosmeticsCache = local;
++        return local;
+       }
+       const result = CosmeticsSchema.safeParse(await response.json());
+       if (!result.success) {
+         console.error(`Invalid cosmetics: ${result.error.message}`);
+-        return null;
++        const local = withFreeTerritoryPatterns(null);
++        __cosmeticsCache = local;
++        return local;
+       }
+-      const patternKeys = Object.keys(result.data.patterns).sort();
++      const catalog = withFreeTerritoryPatterns(result.data);
++      const patternKeys = Object.keys(catalog.patterns).sort();
+       const hashInput = patternKeys.join(",");
+       __cosmeticsHash = simpleHash(hashInput);
+-      __cosmeticsCache = result.data;
+-      return result.data;
++      __cosmeticsCache = catalog;
++      return catalog;
+     } catch (error) {
+       console.warn("Error getting cosmetics:", error);
+-      return null;
++      const local = withFreeTerritoryPatterns(null);
++      __cosmeticsCache = local;
++      return local;
+     }
+   })();
+   __cosmetics = request;
+@@ -988,6 +999,10 @@ function patternRelationship(
+   userMeResponse: UserMeResponse | false,
+   affiliateCode: string | null,
+ ): "owned" | "purchasable" | "blocked" {
++  if (isFreeTerritoryPatternName(pattern.name)) {
++    return colorPalette === null ? "blocked" : "owned";
++  }
++
+   if (colorPalette === null) {
+     // For backwards compatibility only show non-colored patterns if they are owned.
+     const flares =
+@@ -1439,8 +1454,12 @@ export async function getPlayerCosmeticsRefs(
+   let patternDenied = false;
+ 
+   if (pattern) {
++    const isBundledFreePattern = isFreeTerritoryPatternName(pattern.name);
+     const userMe = await getUserMe();
+-    if (userMe) {
++    if (isBundledFreePattern) {
++      // Community-edition patterns are bundled assets, not account grants.
++      // Keep them for signed-out and signed-in players alike.
++    } else if (userMe) {
+       const flareName =
+         pattern.colorPalette?.name === undefined
+           ? `pattern:${pattern.name}`
+diff --git a/src/client/FreeTerritoryCosmetics.ts b/src/client/FreeTerritoryCosmetics.ts
+new file mode 100644
+index 0000000..b1cba4c
+--- /dev/null
++++ b/src/client/FreeTerritoryCosmetics.ts
+@@ -0,0 +1,43 @@
++import type { Cosmetics, Pattern } from "@openfront/shared/CosmeticSchemas";
++import {
++  FREE_TERRITORY_PATTERNS,
++  isFreeTerritoryPatternName,
++} from "@openfront/shared/FreeTerritoryPatterns";
++
++/** Add the free community patterns to a fetched catalog, or form a local catalog. */
++export function withFreeTerritoryPatterns(
++  remote: Cosmetics | null,
++): Cosmetics {
++  const patterns: Record<string, Pattern> = { ...(remote?.patterns ?? {}) };
++  const colorPalettes = { ...(remote?.colorPalettes ?? {}) };
++
++  for (const [name, definition] of Object.entries(FREE_TERRITORY_PATTERNS)) {
++    colorPalettes[definition.palette.name] = { ...definition.palette };
++    patterns[name] = {
++      name,
++      pattern: definition.patternData,
++      product: null,
++      rarity: "common",
++      artist: "Hatami Edition",
++      aiDisclosed: false,
++      colorPalettes: [
++        { name: definition.palette.name, isArchived: false },
++      ],
++    };
++  }
++
++  return {
++    ...(remote ?? { flags: {} }),
++    patterns,
++    colorPalettes,
++    // Premium-only catalog sections are deliberately absent in this edition.
++    currencyPacks: undefined,
++    packs: undefined,
++    subscriptions: undefined,
++    unlistedSubscriptions: undefined,
++    tribeNames: undefined,
++    lobbyQueue: undefined,
++  };
++}
++
++export { isFreeTerritoryPatternName };
 diff --git a/src/client/GameModeSelector.ts b/src/client/GameModeSelector.ts
 index 8ea205a..315f59d 100644
 --- a/src/client/GameModeSelector.ts
@@ -22411,7 +22750,7 @@ index 0e88139..33264aa 100644
        tabs: [
          {
 diff --git a/src/client/Main.ts b/src/client/Main.ts
-index b5cd231..c82e50e 100644
+index b5cd231..899b7dc 100644
 --- a/src/client/Main.ts
 +++ b/src/client/Main.ts
 @@ -27,6 +27,7 @@ import {
@@ -22430,7 +22769,7 @@ index b5cd231..c82e50e 100644
  import {
    installCtrlWheelZoomBlocker,
    installDoubleTapZoomBlocker,
-@@ -307,14 +307,18 @@ export interface JoinLobbyEvent {
+@@ -307,19 +307,24 @@ export interface JoinLobbyEvent {
   * IPC round trip is fire-and-forget: a rejection must never surface as an
   * unhandled rejection in the client.
   */
@@ -22451,7 +22790,13 @@ index b5cd231..c82e50e 100644
  class Client {
    private lobbyHandle: JoinLobbyResult | null = null;
    /** The game the replay viewer is showing, once it has replaced the menu. */
-@@ -490,6 +494,13 @@ class Client {
+   private replayViewerID: string | null = null;
+   private eventBus: EventBus = new EventBus();
++  private hudTemplates: HTMLElement[] | null = null;
+ 
+   private currentUrl: string | null = null;
+ 
+@@ -490,6 +495,13 @@ class Client {
        tag: "store-modal",
        pageId: "page-item-store",
      });
@@ -22465,7 +22810,7 @@ index b5cd231..c82e50e 100644
      modalRouter.register("settings", {
        tag: "user-setting",
        pageId: "page-settings",
-@@ -607,23 +618,22 @@ class Client {
+@@ -607,56 +619,26 @@ class Client {
        "game-mode-selector",
      ) as GameModeSelector;
  
@@ -22497,7 +22842,41 @@ index b5cd231..c82e50e 100644
        }
      });
  
-@@ -1175,10 +1185,11 @@ class Client {
+-    // The server's lobby view is the only source for a lobby's real map, size
+-    // and roster, and the only place the client learns that a play/spectate
+-    // switch was accepted (the server can refuse it). Both feed presence.
+-    this.eventBus.on(LobbyInfoEvent, (event) => {
+-      const config = event.lobby.gameConfig;
+-      this.presenceDetail = {
+-        gameType: config?.gameType,
+-        gameMode: config?.gameMode,
+-        map: presenceMapKey(config?.gameMap),
+-        // Seats, not connections: spectators are in the roster but hold none
+-        // (mirrors LobbyPlayerView and the join modal's own count).
+-        playerCount: event.lobby.clients?.filter((c) => !c.spectator).length,
+-        maxPlayers: config?.maxPlayers,
+-        lobbyId: presenceLobbyId(config, event.lobby.gameID),
+-      };
+-      this.presenceSpectating =
+-        event.lobby.clients?.find((c) => c.clientID === event.myClientID)
+-          ?.spectator === true;
+-      this.emitPresence();
+-    });
+-
+-    // The game's grouping token, from lobby_info in the lobby or from the
+-    // start message for someone who joined after it. Spectators get it too:
+-    // they are in the same group, and it is the shell that decides what a
+-    // spectator does to the group's size.
+-    this.eventBus.on(GroupTokenEvent, (event) => {
+-      if (this.presenceGroup.accept(event.groupToken)) {
+-        this.emitPresence();
+-      }
+-    });
++    this.bindLobbyEvents();
+ 
+     document.addEventListener("join-lobby", (event) => {
+       // A rejected handshake (Turnstile alerts then rejects) never assigns
+@@ -1175,10 +1157,10 @@ class Client {
      };
  
      const leaveGame = () => {
@@ -22508,12 +22887,11 @@ index b5cd231..c82e50e 100644
 +      // Do not make navigation depend on a portal SDK promise. The unload
 +      // handler reports the stopped state as a backstop, and the destination
 +      // page must still load if an SDK is slow or fails.
-+      void gamePortal.gameplayStop();
-+      window.location.href = homeHref();
++      document.dispatchEvent(new CustomEvent("leave-lobby"));
      };
  
      const onPopState = () => {
-@@ -1805,6 +1816,30 @@ class Client {
+@@ -1805,6 +1787,30 @@ class Client {
      // above its own lobbyHandle guard precisely because this window exists.
      this.joinInFlight = true;
  
@@ -22544,7 +22922,7 @@ index b5cd231..c82e50e 100644
      console.log(`joining lobby ${lobby.gameID}`);
      // Entering a lobby. Singleplayer, public lobbies and replays know their
      // config up front; everything else is filled in by the lobby_info
-@@ -1866,17 +1901,10 @@ class Client {
+@@ -1866,17 +1872,10 @@ class Client {
      ) {
        this.updateJoinUrlForShare(lobby.gameID);
      }
@@ -22566,7 +22944,7 @@ index b5cd231..c82e50e 100644
      // Ensure the one-shot Steam name-seed has settled before reading
      // getUsername(), mirroring how getClanCheck() runs in parallel with the
      // handshake. whenSeeded() always resolves (falling back to the generated
-@@ -1887,9 +1915,13 @@ class Client {
+@@ -1887,9 +1886,13 @@ class Client {
      // asked for separately.
      const resolvedName =
        this.usernameInput?.resolvedName() ?? fallbackPlayerName();
@@ -22581,7 +22959,7 @@ index b5cd231..c82e50e 100644
      } catch (err) {
        // The game's chunk didn't load (a network error, or a deploy that
        // replaced it). A full page load also picks up a new deploy, unless the
-@@ -1920,12 +1952,14 @@ class Client {
+@@ -1920,12 +1923,14 @@ class Client {
        void showInGameAlert(translateText("error_modal.game_client_failed"));
        return;
      }
@@ -22600,7 +22978,7 @@ index b5cd231..c82e50e 100644
        playerName: resolvedName.name,
        playerClanTag: this.usernameInput?.getClanTag() ?? null,
        clanTagCheck: this.usernameInput?.getClanCheck(),
-@@ -1941,6 +1975,7 @@ class Client {
+@@ -1941,6 +1946,7 @@ class Client {
        snapshot: lobby.snapshot,
        spectator: lobby.spectator,
        creatorToken: lobby.creatorToken,
@@ -22608,6 +22986,113 @@ index b5cd231..c82e50e 100644
      });
  
      if (this.mostRecentJoinEvent !== event.timeStamp) {
+@@ -1959,7 +1965,23 @@ class Client {
+     // From here lobbyHandle is the guard.
+     this.joinInFlight = false;
+ 
+-    void this.lobbyHandle.prestart.then(() => {
++    void newLobbyHandle.prestart.then(() => {
++      if (this.lobbyHandle !== newLobbyHandle) return;
++      if (this.hudTemplates === null) {
++        const freshClone = (node: Node): Node => {
++          const copy = node.cloneNode(false);
++          if (!(node instanceof HTMLElement) || !node.localName.includes("-")) {
++            node.childNodes.forEach((child) =>
++              copy.appendChild(freshClone(child)),
++            );
++          }
++          return copy;
++        };
++        this.hudTemplates = Array.from(
++          document.querySelectorAll<HTMLElement>("[data-game-hud]"),
++          (node) => freshClone(node) as HTMLElement,
++        );
++      }
+       // The game is actually starting now (lobby wait is over). Let listeners that stay up
+       // through the wait (e.g. the featured-stream panel) hide at this point instead of on join.
+       this.menuTornDown = true;
+@@ -1999,7 +2021,8 @@ class Client {
+       }
+     });
+ 
+-    void this.lobbyHandle.join.then(() => {
++    void newLobbyHandle.join.then(() => {
++      if (this.lobbyHandle !== newLobbyHandle) return;
+       this.loadedJoinModal()?.closeWithoutLeaving();
+       this.gameModeSelector.stop();
+       incrementGamesPlayed();
+@@ -2164,6 +2187,39 @@ class Client {
+     }
+   }
+ 
++  private bindLobbyEvents(): void {
++    // The server's lobby view is the only source for a lobby's real map, size
++    // and roster, and the only place the client learns that a play/spectate
++    // switch was accepted (the server can refuse it). Both feed presence.
++    this.eventBus.on(LobbyInfoEvent, (event) => {
++      const config = event.lobby.gameConfig;
++      this.presenceDetail = {
++        gameType: config?.gameType,
++        gameMode: config?.gameMode,
++        map: presenceMapKey(config?.gameMap),
++        // Seats, not connections: spectators are in the roster but hold none
++        // (mirrors LobbyPlayerView and the join modal's own count).
++        playerCount: event.lobby.clients?.filter((c) => !c.spectator).length,
++        maxPlayers: config?.maxPlayers,
++        lobbyId: presenceLobbyId(config, event.lobby.gameID),
++      };
++      this.presenceSpectating =
++        event.lobby.clients?.find((c) => c.clientID === event.myClientID)
++          ?.spectator === true;
++      this.emitPresence();
++    });
++
++    // The game's grouping token, from lobby_info in the lobby or from the
++    // start message for someone who joined after it. Spectators get it too:
++    // they are in the same group, and it is the shell that decides what a
++    // spectator does to the group's size.
++    this.eventBus.on(GroupTokenEvent, (event) => {
++      if (this.presenceGroup.accept(event.groupToken)) {
++        this.emitPresence();
++      }
++    });
++  }
++
+   private async handleLeaveLobby(event?: CustomEvent) {
+     // Above the lobbyHandle guard on purpose. Presence goes to "lobby" when
+     // the join starts, but lobbyHandle is only assigned once the handshake
+@@ -2192,6 +2248,20 @@ class Client {
+     this.lobbyHandle = null;
+     this.currentUrl = null;
+ 
++    if (this.hudTemplates !== null) {
++      document
++        .querySelectorAll<HTMLElement>("[data-game-hud]")
++        .forEach((node, i) => {
++          const template = this.hudTemplates?.[i];
++          if (template) node.replaceWith(template);
++        });
++      this.hudTemplates = null;
++      this.eventBus = new EventBus();
++      this.bindLobbyEvents();
++      if (this.loadedHostModal()) this.hostModal.eventBus = this.eventBus;
++      if (this.loadedJoinModal()) this.joinModal.eventBus = this.eventBus;
++    }
++
+     try {
+       history.replaceState(null, "", "/");
+     } catch (e) {
+@@ -2199,6 +2269,10 @@ class Client {
+     }
+ 
+     setInGameSignal(false);
++    (
++      document.querySelector("game-starting-modal") as GameStartingModal | null
++    )?.hide();
++    gamePortal.loadingStop();
+ 
+     // The inverse of the game-start teardown. Every other exit from a started
+     // game navigates, and the reload did this implicitly; this path leaves in
 diff --git a/src/client/SinglePlayerModal.ts b/src/client/SinglePlayerModal.ts
 index 762b5eb..219e59d 100644
 --- a/src/client/SinglePlayerModal.ts
@@ -22620,6 +23105,170 @@ index 762b5eb..219e59d 100644
      };
      // Until eligibility is loaded, count nothing — otherwise the overview would
      // briefly include wins on non-eligible maps before the manifests resolve.
+diff --git a/src/client/Store.ts b/src/client/Store.ts
+index 7972fbc..9745ca5 100644
+--- a/src/client/Store.ts
++++ b/src/client/Store.ts
+@@ -36,11 +36,13 @@ import {
+   ResolvedCosmetic,
+ } from "./Cosmetics";
+ import { matchesStoreItem } from "./EquippedCosmetics";
++import { isFreeTerritoryPatternName } from "./FreeTerritoryCosmetics";
+ import {
+   priceStringToCents,
+   reportPendingSteamAuthorizations,
+ } from "./Payments";
+ import { lastUserMeResponse } from "./UserMeBroadcast";
++import { UserSettings } from "./UserSettings";
+ import { translateText } from "./Utils";
+ 
+ // Matches the API's formatting of `product.price`, so a tier priced from its
+@@ -108,6 +110,10 @@ export class StoreModal extends BaseModal {
+   private openedPack: ResolvedCosmetic | null = null;
+   private readonly pages = new ProgressiveList(this);
+ 
++  private isFreeEditionCatalog(): boolean {
++    return this.cosmetics?.patterns.desert_dunes !== undefined;
++  }
++
+   protected modalConfig() {
+     if (this.affiliateCode) {
+       // Affiliate mode: hide tabs, show only items associated with the code.
+@@ -115,14 +121,19 @@ export class StoreModal extends BaseModal {
+     }
+     return {
+       showScrollToTop: true,
+-      tabs: [
+-        { key: "packs", label: translateText("store.packs") },
+-        { key: "subscriptions", label: translateText("store.subscriptions") },
+-        { key: "bundles", label: translateText("store.bundles") },
+-        { key: "cosmetics", label: translateText("store.cosmetics") },
+-        { key: "effects", label: translateText("store.effects") },
+-        { key: "tribes", label: translateText("store.tribes") },
+-      ],
++      tabs: this.isFreeEditionCatalog()
++        ? [{ key: "cosmetics", label: translateText("store.cosmetics") }]
++        : [
++            { key: "packs", label: translateText("store.packs") },
++            {
++              key: "subscriptions",
++              label: translateText("store.subscriptions"),
++            },
++            { key: "bundles", label: translateText("store.bundles") },
++            { key: "cosmetics", label: translateText("store.cosmetics") },
++            { key: "effects", label: translateText("store.effects") },
++            { key: "tribes", label: translateText("store.tribes") },
++          ],
+     };
+   }
+ 
+@@ -195,26 +206,38 @@ export class StoreModal extends BaseModal {
+       title: translateText("store.title"),
+       onBack: () => this.close(),
+       ariaLabel: translateText("common.back"),
+-      rightContent: html`<div class="flex items-center gap-4">
+-        ${
+-          currency
+-            ? html`<currency-display
+-                .hard=${currency.hard}
+-                .soft=${currency.soft}
+-              ></currency-display>`
+-            : ""
+-        }
+-        <not-logged-in-warning></not-logged-in-warning>
+-      </div>`,
++      rightContent: this.isFreeEditionCatalog()
++        ? undefined
++        : html`<div class="flex items-center gap-4">
++            ${
++              currency
++                ? html`<currency-display
++                    .hard=${currency.hard}
++                    .soft=${currency.soft}
++                  ></currency-display>`
++                : ""
++            }
++            <not-logged-in-warning></not-logged-in-warning>
++          </div>`,
+     });
+   }
+ 
+   private resolvedPurchasables(): ResolvedCosmetic[] {
+-    return resolveCosmetics(
++    const resolved = resolveCosmetics(
+       this.cosmetics,
+       this.userMeResponse,
+       this.affiliateCode,
+-    ).filter((resolved) => resolved.relationship === "purchasable");
++    );
++    if (!this.isFreeEditionCatalog()) {
++      return resolved.filter((item) => item.relationship === "purchasable");
++    }
++    return resolved.filter(
++      (item) =>
++        item.type === "pattern" &&
++        item.cosmetic !== null &&
++        item.colorPalette !== null &&
++        isFreeTerritoryPatternName(item.cosmetic.name),
++    );
+   }
+ 
+   private cosmeticsGroups(
+@@ -381,6 +404,31 @@ export class StoreModal extends BaseModal {
+     active: ResolvedCosmetic,
+     userHasSubscription: boolean,
+   ): TemplateResult {
++    if (
++      active.type === "pattern" &&
++      active.cosmetic !== null &&
++      isFreeTerritoryPatternName(active.cosmetic.name)
++    ) {
++      return html`<button
++        class="mt-2 flex min-h-11 w-full items-center justify-center rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-2 py-1.5 text-base font-bold text-emerald-300 transition-colors hover:bg-emerald-500/25 hover:text-white"
++        @click=${(event: Event) => {
++          event.stopPropagation();
++          new UserSettings().setSelectedPatternName(active.key);
++          window.dispatchEvent(
++            new CustomEvent("show-message", {
++              detail: {
++                message: translateText("store.free_equipped", {
++                  name: cosmeticSelectionLabel(active),
++                }),
++                duration: 2000,
++              },
++            }),
++          );
++        }}
++      >
++        ${translateText("store.free_equip")}
++      </button>`;
++    }
+     if (active.type === "subscription" && active.relationship === "owned") {
+       return this.renderStatus(translateText("store.subscribed"));
+     }
+@@ -558,6 +606,11 @@ export class StoreModal extends BaseModal {
+   // Skins / Flags / Crowns grouped under one top-level tab; a sub-tab bar
+   // (styled like effects-grid's) picks which grid shows.
+   private renderCosmeticsPanel(): TemplateResult {
++    if (this.isFreeEditionCatalog()) {
++      return this.renderBrowser(this.visibleGroups, {
++        emptyTranslationKey: "store.no_skins",
++      });
++    }
+     const emptyKey =
+       this.cosmeticsSubTab === "flags"
+         ? "store.no_flags"
+@@ -736,6 +789,10 @@ export class StoreModal extends BaseModal {
+       this.cosmeticsSubTab = subTabForItem(this.requestedItem);
+     }
+     this.cosmetics ??= await fetchCosmetics();
++    if (this.isFreeEditionCatalog()) {
++      this.cosmeticsSubTab = "patterns";
++      this.activeTab = "cosmetics";
++    }
+     this.selectVisible(this.groupsForTab(this.activeTab));
+     await this.refresh();
+   }
 diff --git a/src/client/TransformHandler.ts b/src/client/TransformHandler.ts
 index 2473632..bb62f80 100644
 --- a/src/client/TransformHandler.ts
@@ -23127,7 +23776,7 @@ index d8f02f9..fb2cbb7 100644
  
  /**
 diff --git a/src/client/hud/GameRenderer.ts b/src/client/hud/GameRenderer.ts
-index f238d66..8882c1a 100644
+index f238d66..f073015 100644
 --- a/src/client/hud/GameRenderer.ts
 +++ b/src/client/hud/GameRenderer.ts
 @@ -23,6 +23,7 @@ import { UserSettings } from "../UserSettings";
@@ -23181,7 +23830,14 @@ index f238d66..8882c1a 100644
      controlPanel,
      playerInfo,
      winModal,
-@@ -427,37 +450,38 @@ export class GameRenderer {
+@@ -421,43 +444,45 @@ export class GameRenderer {
+   }
+ 
+   dispose() {
++    this.layers.forEach((layer) => layer.dispose?.());
+     window.removeEventListener("resize", this.onResize);
+   }
+ 
    tick() {
      const nowMs = performance.now();
      const shouldProfileTick = FrameProfiler.isEnabled();
@@ -23373,19 +24029,21 @@ index 0000000..f70d1ed
 +  }
 +}
 diff --git a/src/client/hud/layers/GameRightSidebar.ts b/src/client/hud/layers/GameRightSidebar.ts
-index e66d219..e615669 100644
+index e66d219..dfb546c 100644
 --- a/src/client/hud/layers/GameRightSidebar.ts
 +++ b/src/client/hud/layers/GameRightSidebar.ts
-@@ -11,7 +11,7 @@ import { Controller } from "../../Controller";
+@@ -11,15 +11,16 @@ import { Controller } from "../../Controller";
  import { isDesktopShell } from "../../DesktopShell";
  import { gamePortal } from "../../GamePortal";
  import { showInGameAlert, showInGameConfirm } from "../../InGameModal";
 -import { TogglePauseIntentEvent } from "../../InputHandler";
 +import { CenterCameraEvent, TogglePauseIntentEvent } from "../../InputHandler";
  import { PauseGameIntentEvent, SendWinnerEvent } from "../../Transport";
- import { homeHref, showToast, translateText } from "../../Utils";
+-import { homeHref, showToast, translateText } from "../../Utils";
++import { showToast, translateText } from "../../Utils";
  import { GameView } from "../../view";
-@@ -20,6 +20,7 @@ import { ShowReplayPanelEvent } from "./ReplayPanel";
+ import { ImmunityBarVisibleEvent } from "./ImmunityTimer";
+ import { ShowReplayPanelEvent } from "./ReplayPanel";
  import { ShowSettingsModalEvent } from "./SettingsModal";
  import { SpawnBarVisibleEvent } from "./SpawnTimer";
  const exitIcon = assetUrl("images/ExitIconWhite.svg");
@@ -23393,7 +24051,7 @@ index e66d219..e615669 100644
  const FastForwardIconSolid = assetUrl("images/FastForwardIconSolidWhite.svg");
  const pauseIcon = assetUrl("images/PauseIconWhite.svg");
  const playIcon = assetUrl("images/PlayIconWhite.svg");
-@@ -276,10 +277,16 @@ export class GameRightSidebar extends LitElement implements Controller {
+@@ -276,10 +277,15 @@ export class GameRightSidebar extends LitElement implements Controller {
        );
        if (!isConfirmed) return;
      }
@@ -23408,13 +24066,12 @@ index e66d219..e615669 100644
 +    } finally {
 +      // Navigation must not depend on the portal stop callback. A stalled SDK
 +      // used to leave the old document half torn down with menu and HUD mixed.
-+      void gamePortal.gameplayStop();
-+      window.location.href = homeHref();
++      document.dispatchEvent(new CustomEvent("leave-lobby"));
 +    }
    }
  
    private onSettingsButtonClick() {
-@@ -288,6 +295,10 @@ export class GameRightSidebar extends LitElement implements Controller {
+@@ -288,6 +294,10 @@ export class GameRightSidebar extends LitElement implements Controller {
      );
    }
  
@@ -23425,7 +24082,7 @@ index e66d219..e615669 100644
    private onFullscreenButtonClick() {
      if (!document.fullscreenElement) {
        document.documentElement.requestFullscreen().catch((err) => {
-@@ -315,6 +326,10 @@ export class GameRightSidebar extends LitElement implements Controller {
+@@ -315,6 +325,10 @@ export class GameRightSidebar extends LitElement implements Controller {
        isEndTimerActive && this.timer <= FLASH_TIMER_SECONDS;
      const shouldFlashSidebar =
        isEndTimerActive && this.timer <= FLASH_SIDEBAR_SECONDS;
@@ -23436,7 +24093,7 @@ index e66d219..e615669 100644
  
      const timerClass = shouldFlashTimer
        ? "game-end-timer-flash"
-@@ -375,6 +390,26 @@ export class GameRightSidebar extends LitElement implements Controller {
+@@ -375,6 +389,26 @@ export class GameRightSidebar extends LitElement implements Controller {
  
          <!-- Buttons -->
          ${this.maybeRenderReplayButtons()}
@@ -23463,7 +24120,7 @@ index e66d219..e615669 100644
  
          <div class="cursor-pointer" @click=${this.onSettingsButtonClick}>
            <img src=${settingsIcon} alt="settings" width="20" height="20" />
-@@ -400,7 +435,11 @@ export class GameRightSidebar extends LitElement implements Controller {
+@@ -400,7 +434,11 @@ export class GameRightSidebar extends LitElement implements Controller {
              : ""
          }
  
@@ -23529,11 +24186,49 @@ index 32a522f..439c6f9 100644
          );
          this.isActive = true;
          this.requestUpdate();
+diff --git a/src/client/hud/layers/MainRadialMenu.ts b/src/client/hud/layers/MainRadialMenu.ts
+index df218dc..a2b38e1 100644
+--- a/src/client/hud/layers/MainRadialMenu.ts
++++ b/src/client/hud/layers/MainRadialMenu.ts
+@@ -80,6 +80,10 @@ export class MainRadialMenu implements Controller {
+     this.chatIntegration = new ChatIntegration(this.game, this.eventBus);
+   }
+ 
++  dispose() {
++    this.radialMenu.destroy();
++  }
++
+   init() {
+     this.radialMenu.init();
+     this.eventBus.on(ContextMenuEvent, (event) => {
+diff --git a/src/client/hud/layers/SettingsModal.ts b/src/client/hud/layers/SettingsModal.ts
+index 500b886..f655cb1 100644
+--- a/src/client/hud/layers/SettingsModal.ts
++++ b/src/client/hud/layers/SettingsModal.ts
+@@ -23,7 +23,7 @@ import {
+   lobbySettingTagText,
+   notableLobbySettings,
+ } from "../../utilities/LobbySettingsSummary";
+-import { getMapName, homeHref, translateText } from "../../Utils";
++import { getMapName, translateText } from "../../Utils";
+ import type { GameView } from "../../view/GameView";
+ const exitIcon = assetUrl("images/ExitIconWhite.svg");
+ const settingsIcon = assetUrl("images/SettingIconWhite.svg");
+@@ -267,8 +267,7 @@ export class SettingsModal extends LitElement implements Controller {
+   }
+ 
+   private onExitButtonClick() {
+-    // redirect to the home page
+-    window.location.href = homeHref();
++    document.dispatchEvent(new CustomEvent("leave-lobby"));
+   }
+ 
+   private renderModifiers() {
 diff --git a/src/client/hud/layers/WinModal.ts b/src/client/hud/layers/WinModal.ts
-index ea3bcc0..f56d86c 100644
+index ea3bcc0..12923f9 100644
 --- a/src/client/hud/layers/WinModal.ts
 +++ b/src/client/hud/layers/WinModal.ts
-@@ -4,7 +4,7 @@ import type { AllPlayersStats, Winner } from "@openfront/engine-api/Schemas";
+@@ -4,14 +4,13 @@ import type { AllPlayersStats, Winner } from "@openfront/engine-api/Schemas";
  import type { GameXpEligible, Progress } from "@openfront/shared/ApiSchemas";
  import { Pattern } from "@openfront/shared/CosmeticSchemas";
  import { EventBus } from "@openfront/shared/EventBus";
@@ -23542,7 +24237,14 @@ index ea3bcc0..f56d86c 100644
  import { customElement, state } from "lit/decorators.js";
  import {
    copyToClipboard,
-@@ -25,14 +25,12 @@ import type { GameXpPanelState } from "../../components/GameXpPanel";
+   DESKTOP_TUTORIAL_VIDEO_URL,
+   getGamesPlayed,
+   getTranslatedPlayerTeamLabel,
+-  homeHref,
+   isInIframe,
+   showToast,
+   translateText,
+@@ -25,14 +24,12 @@ import type { GameXpPanelState } from "../../components/GameXpPanel";
  import type { LegendCeremony } from "../../components/LegendCeremony";
  import "../../components/ProfileShare";
  import "../../components/PurchaseButton";
@@ -23557,7 +24259,7 @@ index ea3bcc0..f56d86c 100644
  import { gamePortal } from "../../GamePortal";
  import {
    gameShareMoment,
-@@ -58,7 +56,6 @@ import {
+@@ -58,7 +55,6 @@ import {
    reconcileXp,
  } from "../../ProvisionalXpAtDeath";
  import { PlaySoundEffectEvent } from "../../sound/Sounds";
@@ -23565,7 +24267,7 @@ index ea3bcc0..f56d86c 100644
  import { SendWinnerEvent } from "../../Transport";
  import { GameView } from "../../view";
  
-@@ -173,8 +170,6 @@ export class WinModal extends LitElement implements Controller {
+@@ -173,8 +169,6 @@ export class WinModal extends LitElement implements Controller {
  
    private _title: string;
  
@@ -23574,7 +24276,7 @@ index ea3bcc0..f56d86c 100644
    // Override to prevent shadow DOM creation
    createRenderRoot() {
      return this;
-@@ -501,24 +496,16 @@ export class WinModal extends LitElement implements Controller {
+@@ -501,24 +495,16 @@ export class WinModal extends LitElement implements Controller {
    }
  
    innerHtml() {
@@ -23603,7 +24305,7 @@ index ea3bcc0..f56d86c 100644
    }
  
    renderYoutubeTutorial() {
-@@ -552,18 +539,14 @@ export class WinModal extends LitElement implements Controller {
+@@ -552,18 +538,14 @@ export class WinModal extends LitElement implements Controller {
    }
  
    renderPatternButton() {
@@ -23625,7 +24327,7 @@ index ea3bcc0..f56d86c 100644
          <div
            class="mx-auto w-full overflow-x-auto overflow-y-visible rounded-sm"
          >
-@@ -586,7 +569,7 @@ export class WinModal extends LitElement implements Controller {
+@@ -586,7 +568,7 @@ export class WinModal extends LitElement implements Controller {
      );
  
      if (purchasable.length === 0) {
@@ -23634,7 +24336,7 @@ index ea3bcc0..f56d86c 100644
        return;
      }
  
-@@ -620,41 +603,6 @@ export class WinModal extends LitElement implements Controller {
+@@ -620,41 +602,6 @@ export class WinModal extends LitElement implements Controller {
      `;
    }
  
@@ -23676,6 +24378,15 @@ index ea3bcc0..f56d86c 100644
    async show() {
      void gamePortal.gameplayStop();
      // The onboarding tutorial ends on its own card (OnboardingOverlay).
+@@ -978,7 +925,7 @@ export class WinModal extends LitElement implements Controller {
+ 
+   private _handleExit() {
+     this.hide();
+-    window.location.href = homeHref();
++    document.dispatchEvent(new CustomEvent("leave-lobby"));
+   }
+ 
+   private _handleRequeue() {
 diff --git a/src/client/hud/layers/ZoomSlider.ts b/src/client/hud/layers/ZoomSlider.ts
 new file mode 100644
 index 0000000..8294bfb
@@ -25844,6 +26555,28 @@ index 37cab9c..2432b1e 100644
      default:
        // Gameplay intents: websocket players only.
        if (actor.isAdminBot) {
+diff --git a/src/server/Privilege.ts b/src/server/Privilege.ts
+index 92a0251..f5f8a29 100644
+--- a/src/server/Privilege.ts
++++ b/src/server/Privilege.ts
+@@ -5,6 +5,7 @@ import {
+   Cosmetics,
+   findEffectForSlot,
+ } from "@openfront/shared/CosmeticSchemas";
++import { resolveFreeTerritoryPattern } from "@openfront/shared/FreeTerritoryPatterns";
+ import { decodePatternData } from "@openfront/shared/PatternDecoder";
+ import {
+   PlayerColor,
+@@ -185,6 +186,9 @@ export class PrivilegeCheckerImpl implements PrivilegeChecker {
+     name: string,
+     colorPaletteName: string | null,
+   ): PlayerPattern {
++    const freePattern = resolveFreeTerritoryPattern(name, colorPaletteName);
++    if (freePattern) return freePattern;
++
+     // Look for the pattern in the cosmetics.json config
+     const found = this.cosmetics.patterns[name];
+     if (!found) throw new Error(`Pattern ${name} not found`);
 diff --git a/src/server/ServerEnv.ts b/src/server/ServerEnv.ts
 index c595041..d08d393 100644
 --- a/src/server/ServerEnv.ts
@@ -26092,7 +26825,7 @@ index d73c3aa..33de1cb 100644
 +  });
 +});
 diff --git a/tests/GameRightSidebar.test.ts b/tests/GameRightSidebar.test.ts
-index 5c10cc6..d395f91 100644
+index 5c10cc6..01410b8 100644
 --- a/tests/GameRightSidebar.test.ts
 +++ b/tests/GameRightSidebar.test.ts
 @@ -1,12 +1,14 @@
@@ -26110,7 +26843,7 @@ index 5c10cc6..d395f91 100644
    translateText: (key: string) => key,
  }));
  
-@@ -87,6 +89,22 @@ describe("GameRightSidebar end timer warnings", () => {
+@@ -87,6 +89,21 @@ describe("GameRightSidebar end timer warnings", () => {
    afterEach(() => {
      window.removeEventListener("show-message", captureToast);
      document.body.innerHTML = "";
@@ -26118,18 +26851,17 @@ index 5c10cc6..d395f91 100644
 +    vi.restoreAllMocks();
 +  });
 +
-+  it("navigates home even when the portal stop callback never settles", async () => {
++  it("leaves in place after the portal ad", async () => {
 +    vi.spyOn(gamePortal, "requestMidgameAd").mockResolvedValue();
-+    vi.spyOn(gamePortal, "gameplayStop").mockReturnValue(
-+      new Promise<void>(() => {}),
-+    );
++    const onLeave = vi.fn();
++    document.addEventListener("leave-lobby", onLeave, { once: true });
 +    const { sidebar } = createSidebar();
 +    await sidebar.updateComplete;
 +
 +    sidebar.querySelector<HTMLElement>("[data-exit-game]")?.click();
 +
-+    await vi.waitFor(() => expect(window.location.hash).toBe("#home"));
-+    expect(gamePortal.gameplayStop).toHaveBeenCalledOnce();
++    await vi.waitFor(() => expect(onLeave).toHaveBeenCalledOnce());
++    expect(window.location.hash).toBe("");
    });
  
    it("turns the timer red and fires one heads-up toast at the one-minute mark", async () => {
@@ -26538,6 +27270,64 @@ index 21b168c..6f76d08 100644
      expect(el.querySelector("button")).toBeNull();
    });
  });
+diff --git a/tests/client/FreeTerritoryPatterns.test.ts b/tests/client/FreeTerritoryPatterns.test.ts
+new file mode 100644
+index 0000000..3f32fb4
+--- /dev/null
++++ b/tests/client/FreeTerritoryPatterns.test.ts
+@@ -0,0 +1,52 @@
++import { base64url } from "jose";
++import { CosmeticsSchema } from "@openfront/shared/CosmeticSchemas";
++import {
++  FREE_TERRITORY_PATTERNS,
++  resolveFreeTerritoryPattern,
++} from "@openfront/shared/FreeTerritoryPatterns";
++import { decodePatternData } from "@openfront/shared/PatternDecoder";
++import { resolveCosmetics } from "../../src/client/Cosmetics";
++import { withFreeTerritoryPatterns } from "../../src/client/FreeTerritoryCosmetics";
++import { describe, expect, it } from "vitest";
++
++describe("free territory patterns", () => {
++  it("ships six valid native patterns in a catalog with no premium sections", () => {
++    const catalog = withFreeTerritoryPatterns(null);
++    expect(CosmeticsSchema.safeParse(catalog).success).toBe(true);
++    expect(Object.keys(catalog.patterns)).toHaveLength(6);
++    expect(catalog.currencyPacks).toBeUndefined();
++    expect(catalog.subscriptions).toBeUndefined();
++    expect(catalog.tribeNames).toBeUndefined();
++
++    for (const definition of Object.values(FREE_TERRITORY_PATTERNS)) {
++      const decoded = decodePatternData(
++        definition.patternData,
++        base64url.decode,
++      );
++      expect(decoded.width).toBe(12);
++      expect(decoded.height).toBe(12);
++    }
++  });
++
++  it("makes every bundled palette free and owned without an account", () => {
++    const catalog = withFreeTerritoryPatterns(null);
++    const resolved = resolveCosmetics(catalog, false, null).filter(
++      (item) =>
++        item.type === "pattern" &&
++        item.cosmetic?.name !== "default" &&
++        item.relationship === "owned",
++    );
++    expect(resolved).toHaveLength(6);
++    expect(resolved.every((item) => item.relationship === "owned")).toBe(true);
++  });
++
++  it("resolves only the bundled name and its matching palette", () => {
++    expect(resolveFreeTerritoryPattern("desert_dunes", "desert_sunset"))
++      .toMatchObject({
++        name: "desert_dunes",
++        colorPalette: { name: "desert_sunset" },
++      });
++    expect(resolveFreeTerritoryPattern("desert_dunes", "wrong")).toBeUndefined();
++    expect(resolveFreeTerritoryPattern("paid_pattern", null)).toBeUndefined();
++  });
++});
 diff --git a/tests/client/GameRightSidebar.centerCamera.test.ts b/tests/client/GameRightSidebar.centerCamera.test.ts
 new file mode 100644
 index 0000000..6109b49

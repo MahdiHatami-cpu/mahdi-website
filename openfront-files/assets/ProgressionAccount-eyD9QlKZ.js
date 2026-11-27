@@ -1,0 +1,1 @@
+import{Na as e,Pr as t,ca as n,oi as r}from"./index-Cv-L6ZYS.js";async function i(){if(!await r())return{kind:`signed_out`};let i=await t();return i===!1?{kind:`unknown`}:e(i.user)||n.isOnGamePortal()&&await n.getUserProfile()!==null?{kind:`signed_in`,me:i}:{kind:`signed_out`}}export{i as t};
